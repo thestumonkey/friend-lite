@@ -24,22 +24,22 @@ services:
     volumes:
       - ./frontend:/app
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "5173:5173"
-    command: deno task dev
-    environment:
-      MONGO_URL: ${MONGO_URL}
-      SECRET_KEY: ${SECRET_KEY}
-      DATABASE_NAME: ${DATABASE_NAME}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    volumes:
-      - ./backend:/app
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "5173:5173"
+  #   command: deno task dev
+  #   environment:
+  #     MONGO_URL: ${MONGO_URL}
+  #     SECRET_KEY: ${SECRET_KEY}
+  #     DATABASE_NAME: ${DATABASE_NAME}
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD}
+  #   volumes:
+  #     - ./backend:/app
 
 
 volumes:
