@@ -4,7 +4,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - .docker/redis:/bitnamilegacy/redis/data
+      - redis_data:/bitnamilegacy/redis/data
     environment:
       - REDIS_PASSWORD
   mongo:
@@ -12,8 +12,36 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - .docker/mongo:/data/db
+      - mongo_data:/data/db
     restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./frontend:/app
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    command: deno task dev
     environment:
-      - MONGO_INITDB_ROOT_USERNAME
-      - MONGO_INITDB_ROOT_PASSWORD
+      MONGO_URL: ${MONGO_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_NAME: ${DATABASE_NAME}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - ./backend:/app
+
+
+volumes:
+  mongo_data:
+  redis_data:
