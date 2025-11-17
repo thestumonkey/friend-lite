@@ -1,10 +1,7 @@
 import { expect, fn } from "@std/expect";
 import { Auth } from "@/lib/auth/core.server.ts";
 import { getMongoResource } from "@/lib/mongo/core.server.ts";
-import {
-  fetchTimelineData,
-  updateHistogram,
-} from "./timeline.server.ts";
+import { fetchTimelineData, updateHistogram } from "./timeline.server.ts";
 import { Resolution } from "@/types/resolution.ts";
 import { type Timestamp } from "@/types/timeline.ts";
 import { withFixtures } from "@/tests/fixtures.server.ts";

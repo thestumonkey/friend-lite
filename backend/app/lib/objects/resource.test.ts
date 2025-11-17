@@ -1,7 +1,12 @@
 import { expect } from "@std/expect";
 import { Auth } from "@/lib/auth/core.server.ts";
 import { withFixtures } from "@/tests/fixtures.server.ts";
-import { ObjectsResource, type ObjectsRequest, type ObjectsResponse, getObjectsResource as getObjectsResourceFn } from "@/lib/objects/resource.server.ts";
+import {
+  getObjectsResource as getObjectsResourceFn,
+  type ObjectsRequest,
+  ObjectsResource,
+  type ObjectsResponse,
+} from "@/lib/objects/resource.server.ts";
 import { ObjectId } from "mongodb";
 
 async function getObjectsResource(auth: Auth) {

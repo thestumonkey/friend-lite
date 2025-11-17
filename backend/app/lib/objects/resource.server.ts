@@ -545,7 +545,9 @@ export class ObjectsResource
         } catch (error) {
           console.error("Error fetching object history:", error);
           throw new Error(
-            `Failed to fetch object history: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to fetch object history: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           );
         }
       }
@@ -578,5 +580,7 @@ export class ObjectsResource
 export function getObjectsResource(
   auth: Auth,
 ): Promise<(input: ObjectsRequest) => Promise<ObjectsResponse>> {
-  return auth.getResource<ObjectsRequest, ObjectsResponse>("tech.mycelia.objects");
+  return auth.getResource<ObjectsRequest, ObjectsResponse>(
+    "tech.mycelia.objects",
+  );
 }

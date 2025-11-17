@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 
 export function errorHandler(
@@ -9,20 +9,22 @@ export function errorHandler(
 ): void {
   // Handle Zod validation errors
   let zodIssues: any[] | null = null;
-  
+
   if (error instanceof ZodError) {
     zodIssues = error.issues;
   } else if (error && typeof error === "object") {
     const errorObj = error as any;
-    
+
     // Check if it has issues property directly
     if ("issues" in errorObj && Array.isArray(errorObj.issues)) {
       zodIssues = errorObj.issues;
-    }
-    // Check if error.message is a stringified JSON array
+    } // Check if error.message is a stringified JSON array
     else if (errorObj.message && typeof errorObj.message === "string") {
       // Check if message looks like stringified Zod error
-      if (errorObj.message.includes("invalid_union_discriminator") || errorObj.message.startsWith("[")) {
+      if (
+        errorObj.message.includes("invalid_union_discriminator") ||
+        errorObj.message.startsWith("[")
+      ) {
         try {
           const parsed = JSON.parse(errorObj.message);
           if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].code) {
@@ -34,7 +36,7 @@ export function errorHandler(
       }
     }
   }
-  
+
   if (zodIssues) {
     res.status(400).json({
       success: false,
@@ -60,9 +62,7 @@ export function errorHandler(
   }
 
   // Default error handling
-  const errorMessage = error instanceof Error
-    ? error.message
-    : String(error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
 
   console.error("Unhandled error:", error);
   console.error("Error type:", error?.constructor?.name);
@@ -76,4 +76,3 @@ export function errorHandler(
     error: errorMessage,
   });
 }
-

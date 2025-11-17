@@ -1,7 +1,6 @@
 import _ from "lodash";
 import { type LoaderData, type Timestamp } from "../types/timeline.ts";
 
-
 import { getMongoResource } from "@/lib/mongo/core.server.ts";
 import { Auth } from "@/lib/auth/core.server.ts";
 

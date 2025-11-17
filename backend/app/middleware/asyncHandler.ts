@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
 
 /**
  * Wraps async route handlers to automatically catch errors and pass them to error middleware
@@ -12,4 +12,3 @@ export function asyncHandler(
     });
   };
 }
-

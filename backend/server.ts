@@ -84,7 +84,7 @@ async function setup() {
 
 async function startServer(host: string, port: number) {
   await setupResources();
-  
+
   const app = express();
   const httpServer = createHttpServer(app);
 

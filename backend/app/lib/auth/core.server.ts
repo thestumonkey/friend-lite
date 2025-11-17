@@ -89,7 +89,10 @@ export const authenticate = async (req: Request): Promise<Auth | null> => {
   return verifyToken(token);
 };
 
-export const authenticateOr401 = async (req: Request, res: Response): Promise<Auth> => {
+export const authenticateOr401 = async (
+  req: Request,
+  res: Response,
+): Promise<Auth> => {
   const auth = await authenticate(req);
 
   if (!auth) {

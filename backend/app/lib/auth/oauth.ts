@@ -34,7 +34,7 @@ function parseBasicAuthHeader(
 function parseRequestParams(req: ExpressRequest): URLSearchParams {
   const contentType = req.headers["content-type"] || "";
   const params = new URLSearchParams();
-  
+
   if (contentType.includes("application/x-www-form-urlencoded")) {
     // Express already parsed this into req.body
     for (const [k, v] of Object.entries(req.body || {})) {
@@ -46,12 +46,12 @@ function parseRequestParams(req: ExpressRequest): URLSearchParams {
       params.set(k, String(v));
     }
   }
-  
+
   // Also check query params
   for (const [k, v] of Object.entries(req.query || {})) {
     if (v) params.set(k, String(v));
   }
-  
+
   return params;
 }
 
