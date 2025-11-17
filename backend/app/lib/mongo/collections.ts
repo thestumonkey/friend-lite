@@ -144,6 +144,14 @@ async function ensureObjectsIndexes(db: Db): Promise<void> {
     },
     { name: "object_id" },
   );
+  await ensureIndexExists(
+    db,
+    "audio_chunks",
+    {
+      start: 1,
+    },
+    "start_1",
+  );
 }
 
 export async function ensureAllCollectionsExist(): Promise<void> {

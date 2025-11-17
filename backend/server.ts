@@ -5,7 +5,6 @@ import { generateApiKey, verifyApiKey } from "@/lib/auth/tokens.ts";
 import process, { exit } from "node:process";
 import { verifyToken } from "@/lib/auth/core.server.ts";
 import { type Policy } from "@/lib/auth/resources.ts";
-import { createServer } from "vite";
 import express from "express";
 import morgan from "morgan";
 import type { Request, Response } from "express";
@@ -14,16 +13,13 @@ import cors from "npm:cors@2.8.5";
 import { createServer as createHttpServer } from "node:http";
 import { WebSocketServer } from "npm:ws@^8.18.0";
 
-import { type ServerBuild } from "@remix-run/node";
-import { createRequestHandler } from "@remix-run/express";
-
 import { requestCounter } from "@/lib/telemetry.ts";
 import { handlePcmWebSocket } from "@/services/audio.websocket.server.ts";
-import path from "node:path";
 import { setupResources } from "@/lib/resources/registry.ts";
 import { shutdownTelemetry } from "@/lib/telemetry.ts";
 import { ensureAllCollectionsExist } from "@/lib/mongo/collections.ts";
-import { pathToFileURL } from "node:url";
+import { registerRoutes } from "./routes.ts";
+import { errorHandler } from "@/middleware/errorHandler.ts";
 
 let logFile: Deno.FsFile | null = null;
 
@@ -86,34 +82,27 @@ async function setup() {
   await ensureAllCollectionsExist();
 }
 
-async function startServer(host: string, port: number, isProduction: boolean) {
+async function startServer(host: string, port: number) {
+  await setupResources();
+  
   const app = express();
   const httpServer = createHttpServer(app);
 
   app.disable("x-powered-by");
   app.use(cors());
   app.use(morgan("tiny"));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   app.use((req: Request, _res: Response, next: () => void) => {
     requestCounter.add(1, {
       method: req.method,
-      route: new URL(req.url, "http://localhost").pathname,
+      route: new URL(req.url || "/", "http://localhost").pathname,
     });
     next();
   });
 
   const wss = new WebSocketServer({ noServer: true });
-  let viteServer: Awaited<ReturnType<typeof createServer>> | null = null;
-
-  if (!isProduction) {
-    viteServer = await createServer({
-      configFile: "vite.config.ts",
-      mode: "development",
-      server: {
-        middlewareMode: true,
-      },
-    });
-  }
 
   httpServer.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url || "", `http://${request.headers.host}`);
@@ -126,15 +115,6 @@ async function startServer(host: string, port: number, isProduction: boolean) {
           }
         });
       });
-    } else if (!isProduction && viteServer) {
-      const viteWsServer = (viteServer as any).ws;
-      if (viteWsServer && typeof viteWsServer.handleUpgrade === "function") {
-        viteWsServer.handleUpgrade(request, socket, head, (ws: any) => {
-          viteWsServer.emit("connection", ws, request);
-        });
-      } else {
-        socket.destroy();
-      }
     } else {
       socket.destroy();
     }
@@ -145,65 +125,14 @@ async function startServer(host: string, port: number, isProduction: boolean) {
     next();
   });
 
-  if (isProduction) {
-    const serverBuildPath = path.resolve("./build/server/index.js");
-    const clientAssetsDir = path.resolve("./build/client");
-    console.log(`Loading server build from ${serverBuildPath}`);
-    const build: ServerBuild = await import(
-      pathToFileURL(serverBuildPath).href
-    );
+  // Register all routes
+  registerRoutes(app);
 
-    console.log(
-      `Serving static assets from ${clientAssetsDir} at ${build.publicPath}`,
-    );
-    app.use(
-      build.publicPath,
-      express.static(clientAssetsDir, {
-        immutable: true,
-        maxAge: "1y",
-      }),
-    );
-    app.use(express.static("public", { maxAge: "1h" }));
-
-    app.all(
-      "*",
-      createRequestHandler({ build, mode: "production" }),
-    );
-  } else {
-    app.use(express.static("public", { maxAge: "1h" }));
-
-    app.use(viteServer!.middlewares);
-
-    app.all("*", async (req: Request, res: Response, next: () => void) => {
-      try {
-        const serverBuildModule = await viteServer!.ssrLoadModule(
-          "virtual:remix/server-build",
-        );
-        const build = serverBuildModule.default ||
-          serverBuildModule as ServerBuild;
-        return createRequestHandler({ build, mode: "development" })(
-          req,
-          res,
-          next,
-        );
-      } catch (error) {
-        console.error("Error loading Remix build:", error);
-        next();
-      }
-    });
-  }
-
-  app.use((err: unknown, _req: Request, res: Response, _next: () => void) => {
-    console.error("Unhandled error:", err);
-    res.status(500).send("Internal Server Error");
-  });
+  // Error handling middleware (must be last)
+  app.use(errorHandler);
 
   httpServer.listen(port, host, () => {
-    console.log(
-      `Server is running on ${host}:${port} (${
-        isProduction ? "production" : "development"
-      })`,
-    );
+    console.log(`Server is running on ${host}:${port}`);
     console.log(`Open http://${host}:${port}`);
   });
 
@@ -237,19 +166,14 @@ async function configureCli() {
             type: "string",
             describe: "Host to serve on.",
             default: "0.0.0.0",
-          })
-          .option("prod", {
-            type: "boolean",
-            describe: "Serve in production mode",
-            default: false,
           }),
       async (
-        args: ArgumentsCamelCase<{ host: string; port: number; prod: boolean }>,
+        args: ArgumentsCamelCase<{ host: string; port: number }>,
       ) => {
         try {
           const host = String(args.host);
           const port = Number(args.port);
-          await startServer(host, port, args.prod);
+          await startServer(host, port);
           await new Promise((resolve) => {
             process.on("SIGINT", resolve);
             process.on("SIGTERM", resolve);

@@ -14,7 +14,7 @@ Deno.test(
   "Data audio loader: should return segments when authenticated",
   withFixtures(["AdminAuthHeaders", "Mongo"], async (headers: HeadersInit) => {
     const url = new URL("http://localhost:3000/data/audio");
-    url.searchParams.set("start", "2024-01-01T00:00:00.000Z");
+    url.searchParams.set("start", "1704067200000"); // 2024-01-01T00:00:00.000Z as timestamp
 
     const data = await loader(
       createMockLoaderArgs(url.toString(), headers),
@@ -57,7 +57,7 @@ Deno.test(
   "Data audio loader: should handle invalid date parameters",
   withFixtures(["AdminAuthHeaders", "Mongo"], async (headers: HeadersInit) => {
     const url = new URL("http://localhost:3000/data/audio");
-    url.searchParams.set("start", "invalid-date");
+    url.searchParams.set("start", "invalid-timestamp");
 
     try {
       await loader(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Request as ExpressRequest } from "express";
 
 export const tokenRequestSchema = z.object({
   grant_type: z.literal("client_credentials"),
@@ -17,7 +18,7 @@ export type ClientCredentials = {
 };
 
 function parseBasicAuthHeader(
-  header: string | null,
+  header: string | null | undefined,
 ): { clientId: string; clientSecret: string } | null {
   if (!header || !header.startsWith("Basic ")) return null;
   try {
@@ -30,28 +31,36 @@ function parseBasicAuthHeader(
   }
 }
 
-async function parseRequestParams(request: Request): Promise<URLSearchParams> {
-  const contentType = request.headers.get("content-type") || "";
+function parseRequestParams(req: ExpressRequest): URLSearchParams {
+  const contentType = req.headers["content-type"] || "";
+  const params = new URLSearchParams();
+  
   if (contentType.includes("application/x-www-form-urlencoded")) {
-    return new URLSearchParams(await request.text());
-  }
-  if (contentType.includes("application/json")) {
-    const body = await request.json();
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(body ?? {})) {
+    // Express already parsed this into req.body
+    for (const [k, v] of Object.entries(req.body || {})) {
       params.set(k, String(v));
     }
-    return params;
+  } else if (contentType.includes("application/json")) {
+    // Express already parsed this into req.body
+    for (const [k, v] of Object.entries(req.body || {})) {
+      params.set(k, String(v));
+    }
   }
-  return new URLSearchParams(await request.text());
+  
+  // Also check query params
+  for (const [k, v] of Object.entries(req.query || {})) {
+    if (v) params.set(k, String(v));
+  }
+  
+  return params;
 }
 
 export async function extractClientCredentials(
-  request: Request,
+  req: ExpressRequest,
 ): Promise<ClientCredentials> {
-  const authHeader = request.headers.get("authorization");
+  const authHeader = req.headers.authorization;
   const basic = parseBasicAuthHeader(authHeader);
-  const params = await parseRequestParams(request);
+  const params = parseRequestParams(req);
   const grantType = params.get("grant_type") || "client_credentials";
   const scope = params.get("scope");
   const clientIdFromHeader = basic?.clientId || "";

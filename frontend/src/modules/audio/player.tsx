@@ -146,6 +146,7 @@ export const AudioPlayer: React.FC = () => {
 
   const fetchAndDecodeBuffers = async () => {
     if (loadingRef.current) return;
+    if (!audioContext) return; // Ensure audioContext exists before decoding
     
     const prev = chunks[chunks.length - 1];
     const start = prev ? prev.start : currentDate;
@@ -155,7 +156,7 @@ export const AudioPlayer: React.FC = () => {
       loadingRef.current = true
       const lastId = prev ? prev._id : null;
       const resp = await apiClient.get(
-        `/data/audio?start=${start.toISOString()}&limit=${preloadLimit}${
+        `/data/audio?start=${start.getTime()}&limit=${preloadLimit}${
           lastId ? `&lastId=${lastId}` : ""
         }`,
       );
@@ -167,7 +168,7 @@ export const AudioPlayer: React.FC = () => {
         const segments: any[] = (resp as { segments: any[] }).segments;
   
         for (const segment of segments) {
-          audioContext!.decodeAudioData(base64ToArrayBuffer(segment.data)).then(
+          audioContext.decodeAudioData(base64ToArrayBuffer(segment.data)).then(
             (audioBuffer) => {
               appendChunks([{
                 buffer: audioBuffer,
@@ -261,10 +262,10 @@ export const AudioPlayer: React.FC = () => {
   }, [isPlaying, chunks, sourceNode, audioContext]);
 
   useEffect(() => {
-    if (isPlaying && chunks.length < 3) {
+    if (isPlaying && chunks.length < 3 && audioContext) {
       fetchAndDecodeBuffers();
     }
-  }, [isPlaying, chunks]);
+  }, [isPlaying, chunks, audioContext]);
 
   useEffect(() => {
     if (!audioContext) return;

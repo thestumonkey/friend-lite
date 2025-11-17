@@ -163,7 +163,7 @@ export const AudioPlayer: React.FC = () => {
 
     const lastId = prev ? prev._id : null;
     fetcher.load(
-      `/data/audio?start=${start.toISOString()}&limit=${preloadLimit}${
+      `/data/audio?start=${start.getTime()}&limit=${preloadLimit}${
         lastId ? `&lastId=${lastId}` : ""
       }`,
     );

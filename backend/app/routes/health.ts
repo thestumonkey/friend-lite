@@ -1,13 +1,16 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { Express, Request, Response } from "express";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  return Response.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  }, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-    },
+export function registerHealthRoute(app: Express): void {
+  app.get("/", async (_req: Request, res: Response) => {
+    res.json({
+      message: "Mycelia API is running 🍄",
+    });
+  });
+
+  app.get("/health", async (_req: Request, res: Response) => {
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    });
   });
 }

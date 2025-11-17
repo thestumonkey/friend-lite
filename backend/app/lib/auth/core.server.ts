@@ -1,7 +1,7 @@
 import { jwtVerify } from "jose";
-import { createCookie, redirect } from "@remix-run/node";
 import { permissionDenied } from "./utils.ts";
 import { ObjectId } from "mongodb";
+import type { Request, Response } from "express";
 
 import {
   defaultResourceManager,
@@ -10,11 +10,6 @@ import {
   ResourcePath,
 } from "./resources.ts";
 import { EJSON } from "bson";
-
-export const authCookie = createCookie("token", {
-  path: "/",
-  httpOnly: true,
-});
 
 export interface APIKey {
   hashedKey: string;
@@ -83,8 +78,9 @@ export const verifyToken = async (token: string): Promise<null | Auth> => {
   return null;
 };
 
-export const authenticate = async (request: Request): Promise<Auth | null> => {
-  const token = request.headers.get("Authorization")?.split(" ")[1] as string;
+export const authenticate = async (req: Request): Promise<Auth | null> => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1] as string;
 
   if (!token) {
     return null;
@@ -93,23 +89,12 @@ export const authenticate = async (request: Request): Promise<Auth | null> => {
   return verifyToken(token);
 };
 
-export const authenticateOrRedirect = async (
-  request: Request,
-): Promise<Auth> => {
-  const auth = await authenticate(request);
+export const authenticateOr401 = async (req: Request, res: Response): Promise<Auth> => {
+  const auth = await authenticate(req);
 
   if (!auth) {
-    throw redirect("/login");
-  }
-
-  return auth;
-};
-
-export const authenticateOr401 = async (request: Request): Promise<Auth> => {
-  const auth = await authenticate(request);
-
-  if (!auth) {
-    throw new Response("Token is missing or invalid", { status: 401 });
+    res.status(401).json({ error: "Token is missing or invalid" });
+    throw new Error("Unauthorized");
   }
 
   return auth;

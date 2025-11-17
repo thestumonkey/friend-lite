@@ -28,7 +28,6 @@
     "@std/testing": "jsr:@std/testing@^1.0.14",
     "@std/uuid": "jsr:@std/uuid@^1.0.5",
     "ms": "npm:ms",
-    "react": "npm:react@^18.3.1",
     "bullmq": "npm:bullmq@^5.1.1",
     "formdata-node": "npm:formdata-node@^6.0.0"
   },
@@ -38,11 +37,7 @@
       "deno.window",
       "deno.ns"
     ],
-    "types": [
-      "@remix-run/node",
-      "vite/client"
-    ],
-    "jsx": "react",
+    "types": [],
     "strict": true
   }
 }

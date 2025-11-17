@@ -58,6 +58,7 @@ const findSchema = z.object({
     sort: z.record(z.string(), z.any()).optional(),
     limit: z.number().optional(),
     skip: z.number().optional(),
+    hint: z.union([z.string(), z.record(z.string(), z.any())]).optional(),
   }).optional(),
 });
 
@@ -70,6 +71,7 @@ const getFirstBatchSchema = z.object({
     sort: z.record(z.string(), z.any()).optional(),
     limit: z.number().optional(),
     skip: z.number().optional(),
+    hint: z.union([z.string(), z.record(z.string(), z.any())]).optional(),
   }).optional(),
   batchSize: z.number(),
 });

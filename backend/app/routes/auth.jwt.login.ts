@@ -6,8 +6,9 @@ import {
 } from "@/lib/auth/oauth.ts";
 import { decodeAccessToken, verifyApiKey } from "@/lib/auth/tokens.ts";
 
-export function registerOauthTokenRoute(app: Express): void {
-  app.post("/oauth/token", async (req: Request, res: Response) => {
+export function registerAuthJwtLoginRoute(app: Express): void {
+  // Friend-Lite compatible JWT login endpoint - same as oauth.token
+  app.post("/auth/jwt/login", async (req: Request, res: Response) => {
     console.log("token request");
 
     const creds = await extractClientCredentials(req);
@@ -49,3 +50,4 @@ export function registerOauthTokenRoute(app: Express): void {
     res.status(200).json(body);
   });
 }
+
