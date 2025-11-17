@@ -276,9 +276,9 @@ This will:
 - Store transcriptions back to MongoDB
 
 
-### Conversation Extraction (python/convos.py)
+### Conversation Extraction (python/convos)
 
-`python/convos.py` scans recent transcripts, groups them into time-bounded conversation chunks, uses an LLM to extract structured conversations, then writes conversation objects and "mentioned in" relationships to MongoDB.
+`python/convos` scans recent transcripts, groups them into time-bounded conversation chunks, uses an LLM to extract structured conversations, then writes conversation objects and "mentioned in" relationships to MongoDB.
 
 When to run:
 - After your audio has been imported and transcribed. In sequence: Import/daemon → STT → Conversation extraction → (optionally) timeline histogram recalculation.
@@ -291,7 +291,7 @@ What it does:
 How to run:
 ```bash
 cd python
-uv run convos.py \
+uv run python -m convos.cli \
   --limit 5 \
   --model small
 ```

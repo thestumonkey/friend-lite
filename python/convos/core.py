@@ -19,15 +19,9 @@ from lib.llm import get_llm
 from typing import TypedDict
 
 from langchain_openai import ChatOpenAI
-import os
+
 
 llm = get_llm('small')
-
-# llm = ChatOpenAI(
-#     base_url=os.getenv('LLM_BASE_URL'),
-#     api_key=os.getenv('LLM_API_KEY'),
-#     model="meta-llama/llama-3.3-70b-instruct",
-# )
 
 entity_to_id_map = {}
 

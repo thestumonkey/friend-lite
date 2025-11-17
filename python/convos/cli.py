@@ -22,13 +22,13 @@ def main():
         epilog="""
 Examples:
   # Process new conversations only (skip existing)
-  uv run python/convos.py --limit 10
+  uv run python -m convos.cli --limit 10
 
   # Force recreation of all conversations
-  uv run python/convos.py --limit 10 --force
+  uv run python -m convos.cli --limit 10 --force
 
   # Process from a specific timestamp
-  uv run python/convos.py --not-later-than 1699564800
+  uv run python -m convos.cli --not-later-than 1699564800
         """
     )
     parser.add_argument('--limit', type=int, default=None, help='Limit number of conversation chunks to process')
