@@ -81,9 +81,15 @@ class Conversation(Document):
     # Creation metadata
     created_at: Indexed(datetime) = Field(default_factory=datetime.utcnow, description="When the conversation was created")
 
+    # Processing status tracking
+    deleted: bool = Field(False, description="Whether this conversation was deleted due to processing failure")
+    deletion_reason: Optional[str] = Field(None, description="Reason for deletion (no_meaningful_speech, audio_file_not_ready, etc.)")
+    deleted_at: Optional[datetime] = Field(None, description="When the conversation was marked as deleted")
+
     # Summary fields (auto-generated from transcript)
     title: Optional[str] = Field(None, description="Auto-generated conversation title")
-    summary: Optional[str] = Field(None, description="Auto-generated conversation summary")
+    summary: Optional[str] = Field(None, description="Auto-generated short summary (1-2 sentences)")
+    detailed_summary: Optional[str] = Field(None, description="Auto-generated detailed summary (comprehensive, corrected content)")
 
     # Versioned processing
     transcript_versions: List["Conversation.TranscriptVersion"] = Field(

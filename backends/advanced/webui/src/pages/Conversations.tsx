@@ -8,6 +8,7 @@ interface Conversation {
   audio_uuid: string
   title?: string
   summary?: string
+  detailed_summary?: string  // Comprehensive detailed summary
   timestamp: number
   created_at?: string
   client_id: string
@@ -37,6 +38,9 @@ interface Conversation {
     active_transcript_version?: string
     active_memory_version?: string
   }
+  deleted?: boolean
+  deletion_reason?: string
+  deleted_at?: string
 }
 
 // Speaker color palette for consistent colors across conversations
@@ -184,15 +188,15 @@ export default function Conversations() {
     }
   }
 
-  const handleDeleteConversation = async (audioUuid: string) => {
+  const handleDeleteConversation = async (conversationId: string) => {
     try {
       const confirmed = window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')
       if (!confirmed) return
 
-      setDeletingConversation(prev => new Set(prev).add(audioUuid))
+      setDeletingConversation(prev => new Set(prev).add(conversationId))
       setOpenDropdown(null)
 
-      const response = await conversationsApi.delete(audioUuid)
+      const response = await conversationsApi.delete(conversationId)
 
       if (response.status === 200) {
         // Refresh conversations to show updated data
@@ -205,7 +209,7 @@ export default function Conversations() {
     } finally {
       setDeletingConversation(prev => {
         const newSet = new Set(prev)
-        newSet.delete(audioUuid)
+        newSet.delete(conversationId)
         return newSet
       })
     }
@@ -391,11 +395,39 @@ export default function Conversations() {
         ) : (
           conversations.map((conversation) => (
             <div
-              key={conversation.audio_uuid}
-              className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600"
+              key={conversation.conversation_id || conversation.audio_uuid}
+              className={`rounded-lg p-6 border ${
+                conversation.deleted
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                  : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+              }`}
             >
+              {/* Deleted Conversation Warning */}
+              {conversation.deleted && (
+                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/40 rounded-lg border border-red-300 dark:border-red-700">
+                  <div className="flex items-start space-x-2">
+                    <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-red-800 dark:text-red-300 text-sm">Processing Failed</p>
+                      <p className="text-xs text-red-700 dark:text-red-400 mt-1">
+                        Reason: {conversation.deletion_reason === 'no_meaningful_speech'
+                          ? 'No meaningful speech detected'
+                          : conversation.deletion_reason === 'audio_file_not_ready'
+                          ? 'Audio file not saved (possible Bluetooth disconnect)'
+                          : conversation.deletion_reason || 'Unknown'}
+                      </p>
+                      {conversation.deleted_at && (
+                        <p className="text-xs text-red-600 dark:text-red-500 mt-1">
+                          Deleted at: {new Date(conversation.deleted_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Version Selector Header - Only show for conversations with conversation_id */}
-              {conversation.conversation_id && (
+              {conversation.conversation_id && !conversation.deleted && (
                 <ConversationVersionHeader
                   conversationId={conversation.conversation_id}
                   versionInfo={conversation.version_info}
@@ -428,11 +460,21 @@ export default function Conversations() {
                     {conversation.title || "Conversation"}
                   </h2>
 
-                  {/* Summary */}
+                  {/* Short Summary */}
                   {conversation.summary && (
                     <p className="text-sm text-gray-600 dark:text-gray-400 italic">
                       {conversation.summary}
                     </p>
+                  )}
+
+                  {/* Detailed Summary */}
+                  {conversation.detailed_summary && (
+                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <h4 className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2 uppercase tracking-wide">Detailed Summary</h4>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        {conversation.detailed_summary}
+                      </p>
+                    </div>
                   )}
 
                   {/* Metadata */}
@@ -501,16 +543,19 @@ export default function Conversations() {
                       </button>
                       <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
                       <button
-                        onClick={() => handleDeleteConversation(conversation.audio_uuid)}
-                        disabled={deletingConversation.has(conversation.audio_uuid)}
+                        onClick={() => conversation.conversation_id && handleDeleteConversation(conversation.conversation_id)}
+                        disabled={!conversation.conversation_id || (!!conversation.conversation_id && deletingConversation.has(conversation.conversation_id))}
                         className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {deletingConversation.has(conversation.audio_uuid) ? (
+                        {conversation.conversation_id && deletingConversation.has(conversation.conversation_id) ? (
                           <RefreshCw className="h-4 w-4 animate-spin" />
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}
                         <span>Delete Conversation</span>
+                        {!conversation.conversation_id && (
+                          <span className="text-xs text-red-500 ml-1">(ID missing)</span>
+                        )}
                       </button>
                     </div>
                   )}

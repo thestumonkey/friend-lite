@@ -264,7 +264,46 @@ async def open_conversation_job(
 
         await asyncio.sleep(1)  # Check every second for responsiveness
 
-    logger.info(f"✅ Conversation {conversation_id} updates complete, waiting for audio file to be ready...")
+    logger.info(f"✅ Conversation {conversation_id} updates complete, checking for meaningful speech...")
+
+    # FINAL VALIDATION: Check if conversation has meaningful speech before post-processing
+    # This prevents empty/noise-only conversations from being processed and saved
+    combined = await aggregator.get_combined_results(session_id)
+    from advanced_omi_backend.utils.conversation_utils import is_meaningful_speech
+
+    if not is_meaningful_speech(combined):
+        logger.warning(f"⚠️ Conversation {conversation_id} has no meaningful speech after finalization, marking as deleted...")
+
+        # Mark the conversation as deleted instead of removing from database
+        from datetime import datetime
+        conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
+        if conversation:
+            conversation.deleted = True
+            conversation.deletion_reason = "no_meaningful_speech"
+            conversation.deleted_at = datetime.utcnow()
+            await conversation.save()
+            logger.info(f"🗑️ Marked empty conversation {conversation_id} as deleted")
+
+        # Clean up Redis tracking keys
+        conversation_key = f"conversation:session:{session_id}"
+        await redis_client.delete(conversation_key)
+        open_job_key = f"open_conversation:session:{session_id}"
+        await redis_client.delete(open_job_key)
+        current_conversation_key = f"conversation:current:{session_id}"
+        await redis_client.delete(current_conversation_key)
+
+        logger.info(f"✅ Marked conversation as deleted, session can continue")
+
+        return {
+            "conversation_id": conversation_id,
+            "deleted": True,
+            "reason": "no_meaningful_speech",
+            "final_result_count": last_result_count,
+            "runtime_seconds": time.time() - start_time,
+            "timeout_triggered": timeout_triggered
+        }
+
+    logger.info(f"✅ Conversation has meaningful speech, proceeding with post-processing")
 
     # Wait for audio_streaming_persistence_job to complete and write the file path
     # Audio persistence now writes files per-conversation, so key uses conversation_id
@@ -290,6 +329,34 @@ async def open_conversation_job(
     if not file_path_bytes:
         logger.error(f"❌ Audio file path not found in Redis after {max_wait_audio}s (key: {audio_file_key})")
         logger.warning(f"⚠️ Audio persistence job may not have rotated file yet - cannot enqueue batch transcription")
+
+        # Mark the conversation as deleted - it has speech but no audio file to process
+        from datetime import datetime
+        logger.warning(f"🗑️ Marking incomplete conversation {conversation_id} as deleted - has speech but no audio file")
+        conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
+        if conversation:
+            conversation.deleted = True
+            conversation.deletion_reason = "audio_file_not_ready"
+            conversation.deleted_at = datetime.utcnow()
+            await conversation.save()
+            logger.info(f"✅ Marked incomplete conversation {conversation_id} as deleted")
+
+        # Clean up Redis tracking keys
+        conversation_key = f"conversation:session:{session_id}"
+        await redis_client.delete(conversation_key)
+        open_job_key = f"open_conversation:session:{session_id}"
+        await redis_client.delete(open_job_key)
+        current_conversation_key = f"conversation:current:{session_id}"
+        await redis_client.delete(current_conversation_key)
+
+        return {
+            "conversation_id": conversation_id,
+            "deleted": True,
+            "reason": "audio_file_not_ready",
+            "final_result_count": last_result_count,
+            "runtime_seconds": time.time() - start_time,
+            "timeout_triggered": timeout_triggered
+        }
     else:
         file_path = file_path_bytes.decode()
         logger.info(f"📁 Retrieved audio file path: {file_path}")
@@ -416,7 +483,7 @@ async def generate_title_summary_job(
     redis_client=None
 ) -> Dict[str, Any]:
     """
-    Generate title and summary for a conversation using LLM.
+    Generate title, short summary, and detailed summary for a conversation using LLM.
 
     This job runs independently of transcription and memory jobs to ensure
     conversations always get meaningful titles and summaries, even if other
@@ -429,12 +496,13 @@ async def generate_title_summary_job(
         redis_client: Redis client (injected by decorator)
 
     Returns:
-        Dict with generated title and summary
+        Dict with generated title, summary, and detailed_summary
     """
     from advanced_omi_backend.models.conversation import Conversation
     from advanced_omi_backend.utils.conversation_utils import (
-        generate_title_with_speakers,
-        generate_summary_with_speakers
+        generate_title,
+        generate_short_summary,
+        generate_detailed_summary
     )
 
     logger.info(f"📝 Starting title/summary generation for conversation {conversation_id}")
@@ -447,40 +515,50 @@ async def generate_title_summary_job(
         logger.error(f"Conversation {conversation_id} not found")
         return {"success": False, "error": "Conversation not found"}
 
-    # Get segments from active transcript version
+    # Get transcript and segments from active transcript version
+    transcript_text = conversation.transcript or ""
     segments = conversation.segments or []
 
-    if not segments or len(segments) == 0:
-        logger.warning(f"⚠️ No segments available for conversation {conversation_id}")
+    if not transcript_text and (not segments or len(segments) == 0):
+        logger.warning(f"⚠️ No transcript or segments available for conversation {conversation_id}")
         return {
             "success": False,
-            "error": "No segments available",
+            "error": "No transcript or segments available",
             "conversation_id": conversation_id
         }
 
-    # Generate title and summary using speaker-aware utilities
+    # Generate title, short summary, and detailed summary using unified utilities
     try:
-        logger.info(f"🤖 Generating title/summary using LLM for conversation {conversation_id}")
+        logger.info(f"🤖 Generating title/summary/detailed_summary using LLM for conversation {conversation_id}")
 
         # Convert segments to dict format expected by utils
-        segment_dicts = [
-            {
-                "speaker": seg.speaker,
-                "text": seg.text,
-                "start": seg.start,
-                "end": seg.end
-            }
-            for seg in segments
-        ]
+        segment_dicts = None
+        if segments and len(segments) > 0:
+            segment_dicts = [
+                {
+                    "speaker": seg.speaker,
+                    "text": seg.text,
+                    "start": seg.start,
+                    "end": seg.end
+                }
+                for seg in segments
+            ]
 
-        # Generate title and summary with speaker awareness
-        title = await generate_title_with_speakers(segment_dicts)
-        summary = await generate_summary_with_speakers(segment_dicts)
+        # Generate all three summaries in parallel for efficiency
+        import asyncio
+        title, short_summary, detailed_summary = await asyncio.gather(
+            generate_title(transcript_text, segments=segment_dicts),
+            generate_short_summary(transcript_text, segments=segment_dicts),
+            generate_detailed_summary(transcript_text, segments=segment_dicts)
+        )
 
         conversation.title = title
-        conversation.summary = summary
+        conversation.summary = short_summary
+        conversation.detailed_summary = detailed_summary
 
-        logger.info(f"✅ Generated title: '{conversation.title}', summary: '{conversation.summary}'")
+        logger.info(f"✅ Generated title: '{conversation.title}'")
+        logger.info(f"✅ Generated summary: '{conversation.summary}'")
+        logger.info(f"✅ Generated detailed summary: {len(conversation.detailed_summary)} chars")
 
     except Exception as gen_error:
         logger.error(f"❌ Title/summary generation failed: {gen_error}")
@@ -506,6 +584,7 @@ async def generate_title_summary_job(
             "conversation_id": conversation_id,
             "title": conversation.title,
             "summary": conversation.summary,
+            "detailed_summary_length": len(conversation.detailed_summary) if conversation.detailed_summary else 0,
             "segment_count": len(segments),
             "processing_time": processing_time
         })
@@ -518,5 +597,6 @@ async def generate_title_summary_job(
         "conversation_id": conversation_id,
         "title": conversation.title,
         "summary": conversation.summary,
+        "detailed_summary": conversation.detailed_summary,
         "processing_time_seconds": processing_time
     }
