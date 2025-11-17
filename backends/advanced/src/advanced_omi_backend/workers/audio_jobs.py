@@ -58,7 +58,7 @@ async def process_cropping_job(
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
 
-        # Extract speech segments from transcript
+        # Extract speech segments from transcript (property returns data from active version)
         segments = conversation.segments
         if not segments or len(segments) == 0:
             logger.warning(f"⚠️ No segments found for conversation {conversation_id}, skipping cropping")
@@ -113,8 +113,7 @@ async def process_cropping_job(
 
         # Update conversation with cropped audio path and adjusted segments
         conversation.cropped_audio_path = cropped_filename
-        conversation.segments = updated_segments
-        # Also update the active transcript version segments
+        # Update the active transcript version segments
         if conversation.active_transcript:
             conversation.active_transcript.segments = updated_segments
         await conversation.save()

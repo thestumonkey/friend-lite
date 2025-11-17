@@ -268,10 +268,6 @@ async def recognise_speakers_job(
             "processing_time_seconds": time.time() - start_time
         }
 
-        # Update legacy fields if this is the active version
-        if conversation.active_transcript_version == version_id:
-            conversation.segments = updated_segments
-
         await conversation.save()
 
         processing_time = time.time() - start_time

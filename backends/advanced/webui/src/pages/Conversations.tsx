@@ -3,41 +3,50 @@ import { MessageSquare, RefreshCw, Calendar, User, Play, Pause, MoreVertical, Ro
 import { conversationsApi, BACKEND_URL } from '../services/api'
 import ConversationVersionHeader from '../components/ConversationVersionHeader'
 
+interface TranscriptVersion {
+  version_id: string
+  transcript: string
+  segments: Array<{
+    text: string
+    speaker: string
+    start: number
+    end: number
+    confidence?: number
+  }>
+  provider: string
+  model?: string
+  created_at: string
+  processing_time_seconds?: number
+  metadata?: {
+    segment_count?: number
+    word_count?: number
+    speaker_recognition?: {
+      enabled: boolean
+      identified_speakers: string[]
+      processing_time_seconds?: number
+    }
+  }
+}
+
 interface Conversation {
   conversation_id?: string
   audio_uuid: string
   title?: string
   summary?: string
-  detailed_summary?: string  // Comprehensive detailed summary
-  timestamp: number
+  detailed_summary?: string
   created_at?: string
   client_id: string
   segment_count?: number  // From list endpoint
-  transcript?: string  // Full text transcript (for LLM parsing)
-  segments?: Array<{  // Optional - only populated after fetching details
-    text: string
-    speaker: string
-    start: number
-    end: number
-    speaker_id?: string
-    confidence?: number
-  }>
   audio_path?: string
   cropped_audio_path?: string
-  speakers_identified?: string[]
-  speaker_names?: { [key: string]: string }
   duration_seconds?: number
-  memories?: any[]
   has_memory?: boolean
-  memory_processing_status?: string
-  transcription_status?: string
-  action_items?: any[]
-  version_info?: {
-    transcript_count: number
-    memory_count: number
-    active_transcript_version?: string
-    active_memory_version?: string
-  }
+  transcript_versions?: TranscriptVersion[]
+  memory_versions?: any[]
+  active_transcript_version?: string
+  active_memory_version?: string
+  transcript_version_count?: number
+  memory_version_count?: number
   deleted?: boolean
   deletion_reason?: string
   deleted_at?: string
@@ -233,20 +242,25 @@ export default function Conversations() {
       return
     }
 
-    // If segments are already loaded, just expand
-    if (conversation.segments && conversation.segments.length > 0) {
+    // Get active transcript
+    const activeTranscript = conversation.transcript_versions?.find(
+      v => v.version_id === conversation.active_transcript_version
+    )
+
+    // If segments are already loaded in active transcript, just expand
+    if (activeTranscript && activeTranscript.segments && activeTranscript.segments.length > 0) {
       setExpandedTranscripts(prev => new Set(prev).add(conversationId))
       return
     }
 
-    // Fetch full conversation details including segments
+    // Fetch full conversation details including transcript versions
     try {
       const response = await conversationsApi.getById(conversation.conversation_id)
       if (response.status === 200 && response.data.conversation) {
-        // Update the conversation in state with full segments and transcript
+        // Update the conversation in state with full transcript versions
         setConversations(prev => prev.map(c =>
           c.conversation_id === conversationId
-            ? { ...c, segments: response.data.conversation.segments, transcript: response.data.conversation.transcript }
+            ? { ...c, transcript_versions: response.data.conversation.transcript_versions }
             : c
         ))
         // Expand the transcript
@@ -427,10 +441,15 @@ export default function Conversations() {
               )}
 
               {/* Version Selector Header - Only show for conversations with conversation_id */}
-              {conversation.conversation_id && !conversation.deleted && (
+              {conversation.conversation_id && !conversation.deleted && conversation.transcript_versions && (
                 <ConversationVersionHeader
                   conversationId={conversation.conversation_id}
-                  versionInfo={conversation.version_info}
+                  versionInfo={{
+                    transcript_count: conversation.transcript_versions?.length || 0,
+                    memory_count: conversation.memory_versions?.length || 0,
+                    active_transcript_version: conversation.active_transcript_version,
+                    active_memory_version: conversation.active_memory_version
+                  }}
                   onVersionChange={async () => {
                     // Update only this specific conversation without reloading all conversations
                     // This prevents page scroll jump
@@ -481,7 +500,7 @@ export default function Conversations() {
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
                       <Calendar className="h-4 w-4" />
-                      <span>{formatDate(conversation.created_at || conversation.timestamp)}</span>
+                      <span>{formatDate(conversation.created_at || '')}</span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
                       <User className="h-4 w-4" />
@@ -500,7 +519,8 @@ export default function Conversations() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      setOpenDropdown(openDropdown === conversation.audio_uuid ? null : conversation.audio_uuid)
+                      const dropdownKey = conversation.conversation_id || conversation.audio_uuid
+                      setOpenDropdown(openDropdown === dropdownKey ? null : dropdownKey)
                     }}
                     className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                     title="Conversation options"
@@ -509,7 +529,7 @@ export default function Conversations() {
                   </button>
 
                   {/* Dropdown Menu */}
-                  {openDropdown === conversation.audio_uuid && (
+                  {openDropdown === (conversation.conversation_id || conversation.audio_uuid) && (
                     <div className="absolute right-0 top-8 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-2 z-10">
                       <button
                         onClick={() => handleReprocessTranscript(conversation)}
@@ -603,62 +623,71 @@ export default function Conversations() {
 
               {/* Transcript */}
               <div className="space-y-2">
-                {/* Transcript Header with Expand/Collapse */}
-                <div
-                  className="flex items-center justify-between cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => conversation.conversation_id && toggleTranscriptExpansion(conversation.conversation_id)}
-                >
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                    Transcript {((conversation.segments && conversation.segments.length > 0) || conversation.segment_count) && (
-                      <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">
-                        ({conversation.segments?.length || conversation.segment_count || 0} segments)
-                      </span>
-                    )}
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    {conversation.conversation_id && expandedTranscripts.has(conversation.conversation_id) ? (
-                      <ChevronUp className="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200" />
-                    ) : (
-                      <ChevronDown className="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200" />
-                    )}
-                  </div>
-                </div>
+                {(() => {
+                  // Get active transcript version
+                  const activeTranscript = conversation.transcript_versions?.find(
+                    v => v.version_id === conversation.active_transcript_version
+                  )
+                  const segments = activeTranscript?.segments || []
 
-                {/* Transcript Content - Conditionally Rendered */}
-                {conversation.conversation_id && expandedTranscripts.has(conversation.conversation_id) && (
-                  <div className="animate-in slide-in-from-top-2 duration-300 ease-out space-y-4">
-                    {conversation.segments && conversation.segments.length > 0 ? (
-                      <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
-                        <div className="space-y-1">
-                      {(() => {
-                        // Build a speaker-to-color map for this conversation
-                        const speakerColorMap: { [key: string]: string } = {};
-                        let colorIndex = 0;
+                  return (
+                    <>
+                      {/* Transcript Header with Expand/Collapse */}
+                      <div
+                        className="flex items-center justify-between cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                        onClick={() => conversation.conversation_id && toggleTranscriptExpansion(conversation.conversation_id)}
+                      >
+                        <h3 className="font-medium text-gray-900 dark:text-gray-100">
+                          Transcript {(segments.length > 0 || conversation.segment_count) && (
+                            <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">
+                              ({segments.length || conversation.segment_count || 0} segments)
+                            </span>
+                          )}
+                        </h3>
+                        <div className="flex items-center space-x-2">
+                          {conversation.conversation_id && expandedTranscripts.has(conversation.conversation_id) ? (
+                            <ChevronUp className="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200" />
+                          )}
+                        </div>
+                      </div>
 
-                        // First pass: assign colors to unique speakers
-                        conversation.segments.forEach(segment => {
-                          const speaker = segment.speaker || 'Unknown';
-                          if (!speakerColorMap[speaker]) {
-                            speakerColorMap[speaker] = SPEAKER_COLOR_PALETTE[colorIndex % SPEAKER_COLOR_PALETTE.length];
-                            colorIndex++;
-                          }
-                        });
+                      {/* Transcript Content - Conditionally Rendered */}
+                      {conversation.conversation_id && expandedTranscripts.has(conversation.conversation_id) && (
+                        <div className="animate-in slide-in-from-top-2 duration-300 ease-out space-y-4">
+                          {segments.length > 0 ? (
+                            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                              <div className="space-y-1">
+                                {(() => {
+                                  // Build a speaker-to-color map for this conversation
+                                  const speakerColorMap: { [key: string]: string } = {}
+                                  let colorIndex = 0
 
-                        // Render the transcript
-                        return conversation.segments.map((segment, index) => {
-                          const speaker = segment.speaker || 'Unknown';
-                          const speakerColor = speakerColorMap[speaker];
-                          // Use conversation_id for unique segment IDs (falls back to audio_uuid for backward compatibility)
-                          const conversationKey = conversation.conversation_id || conversation.audio_uuid;
-                          const segmentId = `${conversationKey}-${index}`;
-                          const isPlaying = playingSegment === segmentId;
+                                  // First pass: assign colors to unique speakers
+                                  segments.forEach(segment => {
+                                    const speaker = segment.speaker || 'Unknown'
+                                    if (!speakerColorMap[speaker]) {
+                                      speakerColorMap[speaker] = SPEAKER_COLOR_PALETTE[colorIndex % SPEAKER_COLOR_PALETTE.length]
+                                      colorIndex++
+                                    }
+                                  })
+
+                                  // Render the transcript
+                                  return segments.map((segment, index) => {
+                          const speaker = segment.speaker || 'Unknown'
+                          const speakerColor = speakerColorMap[speaker]
+                          // Use conversation_id for unique segment IDs
+                          const conversationKey = conversation.conversation_id || conversation.audio_uuid
+                          const segmentId = `${conversationKey}-${index}`
+                          const isPlaying = playingSegment === segmentId
                           const audioPath = debugMode
                             ? conversation.audio_path
-                            : conversation.cropped_audio_path || conversation.audio_path;
-                          
+                            : conversation.cropped_audio_path || conversation.audio_path
+
                           return (
-                            <div 
-                              key={index} 
+                            <div
+                              key={index}
                               className={`text-sm leading-relaxed flex items-start space-x-2 py-1 px-2 rounded transition-colors ${
                                 isPlaying ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
                               }`}
@@ -668,8 +697,8 @@ export default function Conversations() {
                                 <button
                                   onClick={() => handleSegmentPlayPause(conversationKey, index, segment, audioPath)}
                                   className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-colors mt-0.5 ${
-                                    isPlaying 
-                                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                    isPlaying
+                                      ? 'bg-blue-600 text-white hover:bg-blue-700'
                                       : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'
                                   }`}
                                   title={isPlaying ? 'Pause segment' : 'Play segment'}
@@ -681,7 +710,7 @@ export default function Conversations() {
                                   )}
                                 </button>
                               )}
-                              
+
                               <div className="flex-1 min-w-0">
                                 {debugMode && (
                                   <span className="text-xs text-gray-400 mr-2">
@@ -696,37 +725,46 @@ export default function Conversations() {
                                 </span>
                               </div>
                             </div>
-                          );
-                          });
-                        })()}
+                          )
+                          })
+                                })()}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500 dark:text-gray-400 italic p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                              No transcript available
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-500 dark:text-gray-400 italic p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
-                        No transcript available
-                      </div>
-                    )}
-                    
-                  </div>
-                )}
+                      )}
+                    </>
+                  )
+                })()}
               </div>
 
-              {/* Speaker Information */}
-              {conversation.speakers_identified && conversation.speakers_identified.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">🎤 Identified Speakers:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {conversation.speakers_identified.map((speaker, index) => (
-                      <span 
-                        key={index}
-                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-md text-sm"
-                      >
-                        {speaker}
-                      </span>
-                    ))}
+              {/* Speaker Information - from active transcript metadata */}
+              {(() => {
+                const activeTranscript = conversation.transcript_versions?.find(
+                  v => v.version_id === conversation.active_transcript_version
+                )
+                const identifiedSpeakers = activeTranscript?.metadata?.speaker_recognition?.identified_speakers || []
+
+                return identifiedSpeakers.length > 0 ? (
+                  <div className="mt-4">
+                    <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">🎤 Identified Speakers:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {identifiedSpeakers.map((speaker: string, index: number) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-md text-sm"
+                        >
+                          {speaker}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : null
+              })()}
 
               {/* Debug info */}
               {debugMode && (
@@ -737,9 +775,10 @@ export default function Conversations() {
                     <div>Audio UUID: {conversation.audio_uuid}</div>
                     <div>Original Audio: {conversation.audio_path || 'N/A'}</div>
                     <div>Cropped Audio: {conversation.cropped_audio_path || 'N/A'}</div>
-                    <div>Transcription Status: {conversation.transcription_status || 'N/A'}</div>
-                    <div>Memory Processing Status: {conversation.memory_processing_status || 'N/A'}</div>
-                    <div>Transcript Segments: {conversation.segments?.length || 0}</div>
+                    <div>Active Transcript Version: {conversation.active_transcript_version || 'N/A'}</div>
+                    <div>Transcript Versions: {conversation.transcript_versions?.length || 0}</div>
+                    <div>Active Memory Version: {conversation.active_memory_version || 'N/A'}</div>
+                    <div>Memory Versions: {conversation.memory_versions?.length || 0}</div>
                     <div>Client ID: {conversation.client_id}</div>
                   </div>
                 </div>

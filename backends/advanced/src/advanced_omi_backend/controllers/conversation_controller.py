@@ -96,23 +96,26 @@ async def get_conversation(conversation_id: str, user: User):
         if not user.is_superuser and conversation.user_id != str(user.user_id):
             return JSONResponse(status_code=403, content={"error": "Access forbidden"})
 
-        # Format conversation for API response - use model_dump and add computed fields
+        # Format conversation for API response - clean, no duplication
         formatted_conversation = conversation.model_dump(
-            mode='json',  # Automatically converts datetime to ISO strings, handles nested models
+            mode='json',
             exclude={'id'}  # Exclude MongoDB internal _id
         )
 
-        # Add computed fields not in the model
-        formatted_conversation.update({
-            "timestamp": 0,  # Legacy field - using created_at instead
-            "has_memory": bool(conversation.memories),
-            "version_info": {
-                "transcript_count": len(conversation.transcript_versions),
-                "memory_count": len(conversation.memory_versions),
-                "active_transcript_version": conversation.active_transcript_version,
-                "active_memory_version": conversation.active_memory_version
-            }
-        })
+        # Clean up transcript versions - remove heavy metadata.words
+        if 'transcript_versions' in formatted_conversation:
+            for version in formatted_conversation['transcript_versions']:
+                if 'metadata' in version and version['metadata']:
+                    # Remove words array - not needed by frontend
+                    version['metadata'].pop('words', None)
+                    # Remove redundant speaker_recognition counts (derivable from segments)
+                    if 'speaker_recognition' in version['metadata']:
+                        sr = version['metadata']['speaker_recognition']
+                        sr.pop('total_segments', None)  # Derivable from len(segments)
+                        sr.pop('speaker_count', None)  # Derivable from identified_speakers
+
+        # Add minimal computed fields
+        formatted_conversation['has_memory'] = len(conversation.memory_versions) > 0
 
         return {"conversation": formatted_conversation}
 
@@ -134,26 +137,26 @@ async def get_conversations(user: User):
             # Admins see all conversations
             user_conversations = await Conversation.find_all().sort(-Conversation.created_at).to_list()
 
-        # Convert conversations to API format
+        # Convert conversations to API format - minimal for list view
         conversations = []
         for conv in user_conversations:
-            # Format conversation for list - use model_dump with exclusions
+            # Format conversation for list - exclude heavy version data
             conv_dict = conv.model_dump(
-                mode='json',  # Automatically converts datetime to ISO strings
-                exclude={'id', 'transcript', 'segments', 'transcript_versions', 'memory_versions'}  # Exclude large fields for list view
+                mode='json',
+                exclude={'id', 'transcript_versions', 'memory_versions'}  # Exclude large version arrays
             )
 
-            # Add computed/external fields
+            # Add computed fields
+            # segment_count - count from active transcript version
+            segment_count = 0
+            if conv.active_transcript:
+                segment_count = len(conv.active_transcript.segments) if conv.active_transcript.segments else 0
+
             conv_dict.update({
-                "timestamp": 0,  # Legacy field - using created_at instead
-                "segment_count": len(conv.segments) if conv.segments else 0,
-                "has_memory": bool(conv.memories),
-                "version_info": {
-                    "transcript_count": len(conv.transcript_versions),
-                    "memory_count": len(conv.memory_versions),
-                    "active_transcript_version": conv.active_transcript_version,
-                    "active_memory_version": conv.active_memory_version
-                }
+                "segment_count": segment_count,
+                "has_memory": len(conv.memory_versions) > 0,
+                "transcript_version_count": len(conv.transcript_versions),
+                "memory_version_count": len(conv.memory_versions)
             })
 
             conversations.append(conv_dict)

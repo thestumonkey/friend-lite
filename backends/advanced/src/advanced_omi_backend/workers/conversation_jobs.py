@@ -241,25 +241,12 @@ async def open_conversation_job(
             finalize_received = True
             break
 
-        # Update conversation if new results arrived
+        # Track results progress (conversation will get transcript from transcription job)
         if current_count > last_result_count:
-            # Update conversation in MongoDB
-            conversation = await Conversation.find_one(
-                Conversation.conversation_id == conversation_id
+            logger.info(
+                f"📊 Conversation {conversation_id} progress: "
+                f"{current_count} results, {len(combined['text'])} chars, {len(combined['segments'])} segments"
             )
-
-            if conversation:
-                conversation.transcript = combined["text"]
-                conversation.segments = combined["segments"]
-                await conversation.save()
-
-                logger.info(
-                    f"📊 Updated conversation {conversation_id}: "
-                    f"{current_count} results, {len(combined['text'])} chars, {len(combined['segments'])} segments"
-                )
-            else:
-                logger.warning(f"⚠️ Conversation {conversation_id} not found")
-
             last_result_count = current_count
 
         await asyncio.sleep(1)  # Check every second for responsiveness
@@ -515,7 +502,7 @@ async def generate_title_summary_job(
         logger.error(f"Conversation {conversation_id} not found")
         return {"success": False, "error": "Conversation not found"}
 
-    # Get transcript and segments from active transcript version
+    # Get transcript and segments (properties return data from active transcript version)
     transcript_text = conversation.transcript or ""
     segments = conversation.segments or []
 
