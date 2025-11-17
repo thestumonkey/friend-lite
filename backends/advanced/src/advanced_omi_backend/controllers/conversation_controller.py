@@ -143,10 +143,18 @@ async def get_conversations(user: User):
                 exclude={'id', 'transcript', 'segments', 'transcript_versions', 'memory_versions'}  # Exclude large fields for list view
             )
 
+            # Calculate segment count from either legacy field or active transcript version
+            segment_count = 0
+            if conv.segments:
+                segment_count = len(conv.segments)
+            elif conv.active_transcript:
+                # Use segments from active transcript version if legacy field is empty
+                segment_count = len(conv.active_transcript.segments) if conv.active_transcript.segments else 0
+
             # Add computed/external fields
             conv_dict.update({
                 "timestamp": 0,  # Legacy field - using created_at instead
-                "segment_count": len(conv.segments) if conv.segments else 0,
+                "segment_count": segment_count,
                 "has_memory": bool(conv.memories),
                 "version_info": {
                     "transcript_count": len(conv.transcript_versions),
