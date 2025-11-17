@@ -78,8 +78,12 @@ class Conversation(Document):
     audio_path: Optional[str] = Field(None, description="Path to audio file (relative to CHUNK_DIR)")
     cropped_audio_path: Optional[str] = Field(None, description="Path to cropped audio file (relative to CHUNK_DIR)")
 
-    # Creation metadata
-    created_at: Indexed(datetime) = Field(default_factory=datetime.utcnow, description="When the conversation was created")
+    # Conversation timing
+    start_datetime: Indexed(datetime) = Field(default_factory=datetime.utcnow, description="When the conversation started")
+    end_datetime: Optional[datetime] = Field(None, description="When the conversation ended")
+
+    # Legacy field (backward compatibility)
+    created_at: Optional[datetime] = Field(None, description="Deprecated: Use start_datetime instead")
 
     # Summary fields (auto-generated from transcript)
     title: Optional[str] = Field(None, description="Auto-generated conversation title")
@@ -115,10 +119,14 @@ class Conversation(Document):
     @classmethod
     def clean_legacy_data(cls, data: Any) -> Any:
         """Clean up legacy/malformed data before Pydantic validation."""
-        
+
         #TODO Unsure that we need this, likely best to migrate database on startup, or mimic the old structure better
         if not isinstance(data, dict):
             return data
+
+        # Migrate created_at to start_datetime for backward compatibility
+        if 'created_at' in data and 'start_datetime' not in data:
+            data['start_datetime'] = data['created_at']
 
         # Fix legacy transcript field if it's a dict (should be string or None)
         if isinstance(data.get('transcript'), dict):
@@ -321,7 +329,8 @@ def create_conversation(
         "audio_uuid": audio_uuid,
         "user_id": user_id,
         "client_id": client_id,
-        "created_at": datetime.now(),
+        "start_datetime": datetime.now(),
+        "end_datetime": None,
         "title": title,
         "summary": summary,
         "transcript": transcript or "",

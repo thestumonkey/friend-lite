@@ -294,8 +294,12 @@ async def open_conversation_job(
             from pathlib import Path
             audio_filename = Path(file_path).name
             conversation.audio_path = audio_filename
+
+            # Set end_datetime when conversation is closed
+            conversation.end_datetime = datetime.now()
+
             await conversation.save()
-            logger.info(f"💾 Updated conversation {conversation_id[:12]} with audio_path: {audio_filename}")
+            logger.info(f"💾 Updated conversation {conversation_id[:12]} with audio_path: {audio_filename}, end_datetime: {conversation.end_datetime}")
         else:
             logger.warning(f"⚠️ Conversation {conversation_id} not found for audio_path update")
 

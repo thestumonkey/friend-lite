@@ -129,10 +129,10 @@ async def get_conversations(user: User):
             # Regular users can only see their own conversations
             user_conversations = await Conversation.find(
                 Conversation.user_id == str(user.user_id)
-            ).sort(-Conversation.created_at).to_list()
+            ).sort(-Conversation.start_datetime).to_list()
         else:
             # Admins see all conversations
-            user_conversations = await Conversation.find_all().sort(-Conversation.created_at).to_list()
+            user_conversations = await Conversation.find_all().sort(-Conversation.start_datetime).to_list()
 
         # Convert conversations to API format
         conversations = []
