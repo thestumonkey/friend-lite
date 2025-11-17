@@ -24,6 +24,7 @@ export const zObject = z.object({
   isPerson: z.boolean().optional(),
   isRelationship: z.boolean().optional(),
   isPromise: z.boolean().optional(),
+  isConversation: z.boolean().optional(),
   relationship: z.object({
     object: z.instanceof(ObjectId),
     subject: z.instanceof(ObjectId),

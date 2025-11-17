@@ -64,17 +64,6 @@ export const AudioLayer: () => Layer = () => {
     component: ({ scale, transform, width }: LayerComponentProps) => {
       const { currentDate, resetDate, setIsPlaying } = useAudioPlayer();
 
-      const { start, end, setRange } = useTimelineRange();
-
-      React.useEffect(() => {
-        if (!currentDate) return;
-        const duration = end.getTime() - start.getTime();
-        const half = duration / 2;
-        const newStart = new Date(currentDate.getTime() - half);
-        const newEnd = new Date(currentDate.getTime() + half);
-        setRange(newStart, newEnd);
-      }, [currentDate]);
-
       return (
         <svg
           className="w-full h-full zoomable"

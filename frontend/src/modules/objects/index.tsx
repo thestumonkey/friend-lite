@@ -16,6 +16,7 @@ import { useNow } from "@/hooks/useNow.ts";
 import { formatTime, formatTimeRangeDuration } from "@/lib/formatTime.ts";
 import { useSettingsStore } from "@/stores/settingsStore.ts";
 import { getRelationships } from "@/hooks/useObjectQueries.ts";
+import { useObjectSelectionStore } from "@/stores/objectSelectionStore.ts";
 
 const laneHeight = 40; // Half the previous height for more compact display
 const topMargin = 4;
@@ -41,9 +42,19 @@ function RangeBox({ range }: { range: PlacedObjectRange }) {
   const { start, end, startX, endX, lane, object } = range;
   const { timeFormat } = useSettingsStore();
   const now = useNow();
+  const { toggleSelection, isSelected } = useObjectSelectionStore();
 
-  const handleClick = () => {
-    navigate(`/objects/${object._id.toString()}`);
+  const selected = isSelected(object._id);
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Check for command-click (Cmd on Mac, Ctrl on Windows/Linux)
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSelection(object._id);
+    } else {
+      navigate(`/objects/${object._id.toString()}`);
+    }
   };
 
   const renderIcon = (icon: any) => {
@@ -72,6 +83,8 @@ function RangeBox({ range }: { range: PlacedObjectRange }) {
         y={topMargin + lane * laneHeight}
         rx="4"
         ry="4"
+        stroke={selected ? "#2563eb" : "none"}
+        strokeWidth={selected ? 3 : 0}
       />
 
       {/* Content container */}
@@ -162,23 +175,44 @@ function useLaneLayout(
   const now = useNow(100);
 
   return useMemo(() => {
+    const conversationRanges: ExtractedObjectRange[] = [];
+    const regularRanges: ExtractedObjectRange[] = [];
+
+    for (const range of ranges) {
+      const startX = xFor(range.start);
+      const endX = xFor(range.end ?? now);
+
+      if (endX - startX < 0.5) continue;
+
+      if (range.object.isConversation) {
+        conversationRanges.push(range);
+      } else {
+        regularRanges.push(range);
+      }
+    }
+
+    const sortedRegular = [...regularRanges].sort((a, b) =>
+      a.start.getTime() - b.start.getTime()
+    );
+    const sortedConversations = [...conversationRanges].sort((a, b) =>
+      a.start.getTime() - b.start.getTime()
+    );
+
+    const regularLaneEnds: number[] = [];
+    const conversationLaneEnds: number[] = [];
     const placed: PlacedObjectRange[] = [];
 
-    const sorted = [...ranges].sort((a, b) => {
-      return a.start.getTime() - b.start.getTime();
-    });
-
-    const laneEnds: number[] = [];
-
-    for (const range of sorted) {
+    for (const range of sortedRegular) {
       const startX = xFor(range.start);
       const endX = xFor(range.end ?? now);
 
       let lane = 0;
-      while (lane < laneEnds.length && laneEnds[lane] > startX) lane++;
+      while (lane < regularLaneEnds.length && regularLaneEnds[lane] > startX) {
+        lane++;
+      }
 
-      if (lane === laneEnds.length) laneEnds.push(endX);
-      else laneEnds[lane] = endX;
+      if (lane === regularLaneEnds.length) regularLaneEnds.push(endX);
+      else regularLaneEnds[lane] = endX;
 
       placed.push({
         startX,
@@ -188,7 +222,30 @@ function useLaneLayout(
       });
     }
 
-    return { placed, lanes: laneEnds.length };
+    const regularLaneCount = regularLaneEnds.length;
+
+    for (const range of sortedConversations) {
+      const startX = xFor(range.start);
+      const endX = xFor(range.end ?? now);
+
+      let lane = 0;
+      while (
+        lane < conversationLaneEnds.length && conversationLaneEnds[lane] > startX
+      ) lane++;
+
+      if (lane === conversationLaneEnds.length) {
+        conversationLaneEnds.push(endX);
+      } else conversationLaneEnds[lane] = endX;
+
+      placed.push({
+        startX,
+        endX,
+        lane: lane + regularLaneCount,
+        ...range,
+      });
+    }
+
+    return { placed, lanes: regularLaneCount + conversationLaneEnds.length };
   }, [ranges, xFor, now]);
 }
 
@@ -213,9 +270,8 @@ export const ObjectsLayer: () => Layer = () => {
 
       const visibleItems = useMemo(() => {
         return ranges.filter((range) =>
-          range.start < end && // not in the future
-          (range.end ?? range.start) > start && // not in the past
-          !(range.end && xFor(range.end) - xFor(start) < 4) // Wide enough to see
+          range.start < end &&
+          (range.end ?? range.start) > start
         );
       }, [ranges, start, end]);
 

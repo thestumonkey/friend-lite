@@ -232,6 +232,21 @@ export function ObjectForm(
 
         <div className="flex items-center space-x-2">
           <Checkbox
+            id="isConversation"
+            checked={object.isConversation || false}
+            onCheckedChange={(checked) =>
+              updateField("isConversation", checked as boolean)}
+          />
+          <Label
+            htmlFor="isConversation"
+            className="text-sm font-medium cursor-pointer"
+          >
+            Is Conversation
+          </Label>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Checkbox
             id="isPerson"
             checked={object.isPerson || false}
             onCheckedChange={(checked) =>

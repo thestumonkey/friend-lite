@@ -3,11 +3,23 @@ import { TimelineChart } from "@/components/timeline/TimelineChart";
 import { config } from "@/config";
 import { useObjects } from "@/modules/objects/useObjects";
 import { useTimelineRange } from "@/stores/timelineRange";
+import { useObjectSelectionStore } from "@/stores/objectSelectionStore";
+import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
 
 const TimelinePage = () => {
   const { loading, error, objects } = useObjects();
   const { setRange } = useTimelineRange();
+  const { clearSelection, selectedIds } = useObjectSelectionStore();
   const hasRescaledRef = useRef(false);
+  const hasSelection = selectedIds.size > 0;
+
+  // Clear selection when navigating away
+  useEffect(() => {
+    return () => {
+      clearSelection();
+    };
+  }, [clearSelection]);
 
   // Rescale timeline to fit all objects when they finish loading
   useEffect(() => {
@@ -81,6 +93,14 @@ const TimelinePage = () => {
         <h1 className="text-3xl font-bold">Timeline</h1>
         <div className="flex items-center gap-2">
           {config.tools.map((tool, i) => <tool.component key={i} />)}
+          <Button
+            onClick={clearSelection}
+            disabled={!hasSelection}
+            variant="outline"
+            title="Clear selection"
+          >
+            <X className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 

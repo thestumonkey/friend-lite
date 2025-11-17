@@ -14,6 +14,8 @@ export interface DateStore {
   isPlaying: boolean;
   currentDate: Date | null;
   startDate: Date | null;
+  seekTarget: Date | null;
+  seekGeneration: number;
   chunks: Chunk[];
   currentChunk: Chunk | null;
   audioContext: AudioContext | null;
@@ -27,7 +29,7 @@ export interface DateStore {
   toggleIsPlaying: () => void;
   updateDate: (date: Date) => void;
   resetDate: (date: Date | null) => void;
-  appendChunks: (chunks: Chunk[]) => void;
+  appendChunks: (chunks: Chunk[], generation: number) => void;
   popChunk: () => Promise<Chunk | null>;
   setAudioContext: (ctx: AudioContext | null) => void;
   setSourceNode: (node: AudioBufferSourceNode | null) => void;
@@ -44,6 +46,8 @@ export interface DateStore {
 export const useAudioPlayer = create<DateStore>((set) => ({
   currentDate: null,
   startDate: null,
+  seekTarget: null,
+  seekGeneration: 0,
   chunks: [],
   currentChunk: null,
   isPlaying: false,
@@ -58,10 +62,40 @@ export const useAudioPlayer = create<DateStore>((set) => ({
   toggleIsPlaying: () => set((state) => ({ isPlaying: !state.isPlaying })),
   updateDate: (date: Date) => set({ currentDate: date }),
   resetDate(date: Date | null) {
-    set({ currentDate: date, chunks: [], startDate: date, currentChunk: null });
+    const state = useAudioPlayer.getState();
+
+    if (state.sourceNode) {
+      try {
+        state.sourceNode.stop();
+        state.sourceNode.disconnect();
+      } catch (e) {
+        // Ignore errors if already stopped
+      }
+    }
+
+    if (state.rafId !== null) {
+      cancelAnimationFrame(state.rafId);
+    }
+
+    set({
+      currentDate: date,
+      chunks: [],
+      startDate: date,
+      seekTarget: date,
+      seekGeneration: state.seekGeneration + 1,
+      currentChunk: null,
+      baselineStartDate: null,
+      baselineStartCtxTime: null,
+      sourceNode: null,
+      rafId: null,
+      isCreatingSource: false
+    });
   },
-  appendChunks(chunks: Chunk[]) {
+  appendChunks(chunks: Chunk[], generation: number) {
     set((state) => {
+      if (generation !== state.seekGeneration) {
+        return {};
+      }
       const combined = [...state.chunks, ...chunks];
       combined.sort((a, b) => a.start.getTime() - b.start.getTime());
       return { chunks: combined };
@@ -146,12 +180,14 @@ export const AudioPlayer: React.FC = () => {
 
   const fetchAndDecodeBuffers = async () => {
     if (loadingRef.current) return;
-    if (!audioContext) return; // Ensure audioContext exists before decoding
-    
+    if (!audioContext) return;
+
+    const currentGeneration = useAudioPlayer.getState().seekGeneration;
+
     const prev = chunks[chunks.length - 1];
     const start = prev ? prev.start : currentDate;
     if (!start) return;
-    
+
     try {
       loadingRef.current = true
       const lastId = prev ? prev._id : null;
@@ -161,12 +197,16 @@ export const AudioPlayer: React.FC = () => {
         }`,
       );
 
+      if (useAudioPlayer.getState().seekGeneration !== currentGeneration) {
+        return;
+      }
+
       if (
         resp &&
         Array.isArray((resp as { segments: any[] }).segments)
       ) {
         const segments: any[] = (resp as { segments: any[] }).segments;
-  
+
         for (const segment of segments) {
           audioContext.decodeAudioData(base64ToArrayBuffer(segment.data)).then(
             (audioBuffer) => {
@@ -174,7 +214,7 @@ export const AudioPlayer: React.FC = () => {
                 buffer: audioBuffer,
                 start: new Date(segment.start),
                 _id: segment._id,
-              }]);
+              }], currentGeneration);
             },
           );
         }
@@ -216,22 +256,46 @@ export const AudioPlayer: React.FC = () => {
 
     setIsCreatingSource(true);
 
-    const bufferSource = audioContext.createBufferSource();
-    setSourceNode(bufferSource);
+    const { seekTarget } = useAudioPlayer.getState();
 
-    const chunk = await popChunk();
+    let chunk = await popChunk();
     if (!chunk) {
       setIsCreatingSource(false);
       return;
     }
+
+    if (seekTarget) {
+      const chunkEndTime = chunk.start.getTime() + (chunk.buffer.duration * 1000);
+      while (chunk && seekTarget.getTime() > chunkEndTime) {
+        chunk = await popChunk();
+        if (!chunk) {
+          setIsCreatingSource(false);
+          return;
+        }
+      }
+    }
+
+    const bufferSource = audioContext.createBufferSource();
+    setSourceNode(bufferSource);
     bufferSource.buffer = chunk.buffer;
     bufferSource.connect(gainNode!);
 
     const when = audioContext.currentTime;
-    bufferSource.start(when);
+    let offset = 0;
+    let actualStartDate = chunk.start;
 
-    useAudioPlayer.getState().setBaselines(chunk.start, when);
-    updateDate(chunk.start);
+    if (seekTarget && seekTarget.getTime() > chunk.start.getTime()) {
+      offset = (seekTarget.getTime() - chunk.start.getTime()) / 1000;
+      if (offset < chunk.buffer.duration) {
+        actualStartDate = seekTarget;
+      }
+    }
+
+    bufferSource.start(when, offset);
+
+    useAudioPlayer.getState().setBaselines(actualStartDate, when);
+    useAudioPlayer.getState().update({ seekTarget: null });
+    updateDate(actualStartDate);
 
     bufferSource.onended = () => {
       setSourceNode(null);
