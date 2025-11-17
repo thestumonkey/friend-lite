@@ -10,7 +10,7 @@ export const REGULAR_COLLECTIONS = [
   "diarizations",
   "source_files",
   "objects",
-  "objects_history",
+  "object_history",
 ] as const;
 
 export const GRIDFS_BUCKETS = [

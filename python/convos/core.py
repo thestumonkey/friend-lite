@@ -83,7 +83,16 @@ def get_segments(chunk: list[Utterance], model: str = "small") -> list[tuple[Seg
     for segment in response.segments:
         segment.start = clip(segment.start, chunk_start, chunk_end)
         segment.end = clip(segment.end, chunk_start, chunk_end)
-        result.append((segment, [u for u in chunk if u["start"] < segment.end and u["end"] > segment.start]))
+        segment_utterances = [u for u in chunk if u["start"] < segment.end and u["end"] > segment.start]
+        if not segment_utterances:
+            logger.warning(
+                "Skipping segment '%s' (%s -> %s); no utterances overlap this range",
+                segment.title,
+                segment.start,
+                segment.end,
+            )
+            continue
+        result.append((segment, segment_utterances))
 
     return result
 
@@ -92,9 +101,9 @@ def process_conversation_chunk(chunk: list[Utterance], model: str = "small") -> 
     segments = get_segments(chunk, model=model)
     if not segments:
         return 0
-    
+
     total = 0
-    
+
     for segment, utterances in segments:
         process_segment(segment, utterances, model=model)
         total += 1
@@ -153,6 +162,3 @@ def process_segment(segment: Segment, utterances: list[Utterance], model: str = 
 
     for entity in conversation.entities:
         create_relationship(conversation_id, entity)
-
-
-
