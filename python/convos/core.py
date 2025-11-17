@@ -98,9 +98,30 @@ def get_segments(chunk: list[Utterance], model: str = "small") -> list[tuple[Seg
 
 
 def process_conversation_chunk(chunk: list[Utterance], model: str = "small") -> int:
+    if not chunk:
+        logger.warning("Received empty chunk for conversation processing; skipping")
+        return 0
+
+    chunk_start = chunk[0]["start"]
+    chunk_end = chunk[-1]["end"]
+
     segments = get_segments(chunk, model=model)
     if not segments:
+        logger.info(
+            "Chunk %s -> %s (%d utterances) yielded no segments",
+            chunk_start,
+            chunk_end,
+            len(chunk),
+        )
         return 0
+
+    logger.info(
+        "Processing chunk %s -> %s (%d utterances) into %d segments",
+        chunk_start,
+        chunk_end,
+        len(chunk),
+        len(segments),
+    )
 
     total = 0
 
@@ -162,3 +183,16 @@ def process_segment(segment: Segment, utterances: list[Utterance], model: str = 
 
     for entity in conversation.entities:
         create_relationship(conversation_id, entity)
+
+    logger.debug(
+        "Conversation created id=%s title='%s' [%s -> %s] emoji=%s agreed=%s entities=%s utterances=%d",
+        str(conversation_id),
+        segment.title,
+        segment.start.isoformat(),
+        segment.end.isoformat(),
+        conversation.emoji,
+        conversation.agreed_upon_something,
+        ", ".join(conversation.entities) if conversation.entities else "none",
+        len(utterances),
+    )
+    logger.debug("Conversation summary (%s): %s", segment.title, conversation.summary)
