@@ -106,7 +106,7 @@ uv run manage_errors.py clear <file_id>
 
 Removes the error flag from a specific file without retrying ingestion.
 
-### Conversation Extraction (`convos.py`)
+### Conversation Extraction (`python -m convos.cli`)
 
 Extracts conversations from existing transcripts using an LLM and writes conversation objects plus entity mention relationships to MongoDB.
 
@@ -118,7 +118,7 @@ Extracts conversations from existing transcripts using an LLM and writes convers
 #### Running
 
 ```bash
-uv run convos.py
+uv run python -m convos.cli
 ```
 
 Optional flags:
@@ -130,14 +130,14 @@ Optional flags:
 
 #### Resume-Safe Processing
 
-By default, `convos.py` **skips** chunks that already have conversations, making it safe to resume interrupted processing:
+By default, `convos` **skips** chunks that already have conversations, making it safe to resume interrupted processing:
 
 ```bash
 # Process new conversations only (skips existing)
-uv run convos.py --limit 10
+uv run python -m convos.cli --limit 10
 
 # Continue processing - will skip the 10 already done
-uv run convos.py --limit 10
+uv run python -m convos.cli --limit 10
 ```
 
 #### Force Recreate
@@ -146,13 +146,13 @@ Use `--force` to delete and recreate existing conversations:
 
 ```bash
 # Recreate conversations (useful after prompt improvements)
-uv run convos.py --limit 10 --force
+uv run python -m convos.cli --limit 10 --force
 
 # Recreate with larger model
-uv run convos.py --limit 10 --force --model medium
+uv run python -m convos.cli --limit 10 --force --model medium
 
 # Process items not later than a specific time
-uv run convos.py --not-later-than 1730500000
+uv run python -m convos.cli --not-later-than 1730500000
 ```
 
 #### Logs
