@@ -45,19 +45,19 @@ class Conversation(BaseModel):
 def get_structured_output(messages: list[SystemMessage | HumanMessage | AIMessage], Output: type[BaseModel], llm: ChatOpenAI) -> BaseModel:
     response = llm.with_structured_output(Output.model_json_schema(), include_raw=True).invoke([
         *messages,
-        AIMessage(f'Sure, I will give you the result formatted {Output.model_json_schema()} and nothing else.'),
+        HumanMessage(f'Reply only with the JSON object formatted {Output.model_json_schema()} and nothing else.'),
     ])
 
     try:
         return Output.model_validate(response['parsed'])
     except ValidationError:
         logger.info("Error getting structured output, refining")
-        return llm.with_structured_output(Output).invoke([
-            SystemMessage('Fix the following JSON:'),
-            HumanMessage(content=response['raw']['content']),
-            AIMessage(f'Sure, I will give you the result formatted {Output.model_json_schema()} and nothing else.'),
+        refined = llm.with_structured_output(Output.model_json_schema(), include_raw=True).invoke([
+            HumanMessage('I have a JSON response, but it is not following the schema. Please fix it:'),
+            HumanMessage(content=response['raw'].content),
+            HumanMessage(f'Format this JSON to the schema: {Output.model_json_schema()}.'),
         ])
-
+        return Output.model_validate(refined['parsed'])
 
 
 def clip(x,lower, upper):
