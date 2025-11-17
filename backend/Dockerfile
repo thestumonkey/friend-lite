@@ -1,5 +1,5 @@
 FROM denoland/deno:2.5.6
-EXPOSE 3000
+EXPOSE 5173
 WORKDIR /app
 ENV NODE_ENV=production
 COPY deno.lock /app/deno.lock
