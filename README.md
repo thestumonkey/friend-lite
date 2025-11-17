@@ -94,6 +94,8 @@ docker compose up -d
 cd backend
 cp .env.example .env
 # Edit .env with your preferred settings
+# Make sure Mongo uses the direct connection string from .env:
+# MONGO_URL=mongodb://localhost:27017?directConnection=true
 
 # Generate auth credentials (requires services running)
 deno run -A --env server.ts token-create

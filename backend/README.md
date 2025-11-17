@@ -49,6 +49,13 @@ STT_SERVER_URL=https://stt.example.com/
 STT_API_KEY=optional_api_key
 ```
 
+### Backend environment reminder
+
+When copying `.env.example`, make sure `MONGO_URL` uses the direct-connection string:
+```bash
+MONGO_URL=mongodb://localhost:27017?directConnection=true
+```
+
 ### Processing Audio Chunks
 
 ```bash
