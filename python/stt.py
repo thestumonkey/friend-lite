@@ -372,18 +372,16 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None, filters=
     tqdm.write(f'Using {max_workers} parallel worker(s)')
     tqdm.write(f'STT server: {format_server_label(server_url)}')
 
-    estimated_sequences = None
-    pending_chunks = None
-    if limit is None:
-        estimated_sequences, pending_chunks = get_pending_work_stats(filters)
-        if estimated_sequences is not None and pending_chunks is not None:
-            tqdm.write(f'Pending work: {estimated_sequences} sequences ({pending_chunks} chunks)')
-        elif pending_chunks is not None:
-            tqdm.write(f'Pending work: {pending_chunks} chunks (sequence estimate unavailable)')
-        elif estimated_sequences is not None:
-            tqdm.write(f'Pending work: {estimated_sequences} sequences (chunk count unavailable)')
-        else:
-            tqdm.write('Pending work: unknown (unable to query MongoDB)')
+    estimated_sequences, pending_chunks = get_pending_work_stats(filters)
+    if estimated_sequences is not None or pending_chunks is not None:
+        parts = []
+        if estimated_sequences is not None:
+            parts.append(f"{estimated_sequences} sequences")
+        if pending_chunks is not None:
+            parts.append(f"{pending_chunks} chunks")
+        tqdm.write(f'Pending work: {", ".join(parts)}')
+    else:
+        tqdm.write('Pending work: unknown (unable to query MongoDB)')
 
     if limit is not None:
         progress_mode = 'sequence_limit'
@@ -430,14 +428,6 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None, filters=
                         processed_count += 1
                         batch_processed += 1
 
-                    processed_units = total_chunks if progress_unit == 'chunk' else processed_count
-                    remaining_units = None
-                    eta_seconds = None
-                    if progress_total is not None and processed_units:
-                        remaining_units = max(progress_total - processed_units, 0)
-                        avg_duration = total_processing_seconds / processed_units
-                        eta_seconds = remaining_units * avg_duration
-
                     increment = result["chunks"] if progress_unit == 'chunk' else 1
                     if increment:
                         pbar.update(increment)
@@ -446,8 +436,6 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None, filters=
                         empty=stats['empty'],
                         errors=stats['error'],
                         skipped=stats['skipped'],
-                        chunks=total_chunks,
-                        eta=format_eta(eta_seconds),
                     )
 
                     if limit and processed_count >= limit:
@@ -485,14 +473,6 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None, filters=
                         if status != "skipped":
                             processed_count += 1
 
-                        processed_units = total_chunks if progress_unit == 'chunk' else processed_count
-                        remaining_units = None
-                        eta_seconds = None
-                        if progress_total is not None and processed_units:
-                            remaining_units = max(progress_total - processed_units, 0)
-                            avg_duration = total_processing_seconds / processed_units
-                            eta_seconds = remaining_units * avg_duration
-
                         increment = result["chunks"] if progress_unit == 'chunk' else 1
                         if increment:
                             pbar.update(increment)
@@ -501,8 +481,6 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None, filters=
                             empty=stats['empty'],
                             errors=stats['error'],
                             skipped=stats['skipped'],
-                            chunks=total_chunks,
-                            eta=format_eta(eta_seconds),
                         )
 
                         if limit and processed_count >= limit:
