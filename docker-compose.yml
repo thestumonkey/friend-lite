@@ -22,8 +22,6 @@ services:
     environment:
       - MONGO_INITDB_ROOT_USERNAME
       - MONGO_INITDB_ROOT_PASSWORD
-      - MONGOT_USER
-      - MONGOT_PASSWORD
   mongo-search:
     image: mongodb/mongodb-community-search:latest
     entrypoint: ["/mongot-entrypoint.sh"]

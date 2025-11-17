@@ -1,16 +1,5 @@
 #!/bin/bash
 set -e
-echo "Starting MongoDB initialization for mongot..."
-
-# Get environment variables with defaults
-MONGOT_USER=${MONGOT_USER:-mongotUser}
-MONGOT_PASSWORD=${MONGOT_PASSWORD:-mongotPassword}
-
-if [ -z "$MONGOT_PASSWORD" ]; then
-  echo "Error: MONGOT_PASSWORD environment variable is required"
-  exit 1
-fi
-
 # Wait for MongoDB to be ready
 echo "Waiting for MongoDB to be ready..."
 for i in {1..30}; do
@@ -78,43 +67,6 @@ for i in {1..60}; do
   fi
   sleep 1
 done
-
-sleep 2
-
-# Create or update mongotUser
-echo "Creating or updating mongotUser..."
-mongosh --eval "
-const adminDb = db.getSiblingDB('admin');
-const username = '$MONGOT_USER';
-const password = '$MONGOT_PASSWORD';
-
-try {
-  // Try to update existing user
-  const existingUser = adminDb.getUser(username);
-  if (existingUser) {
-    adminDb.changeUserPassword(username, password);
-    print('User ' + username + ' password updated successfully');
-  }
-} catch (error) {
-  if (error.code === 11 || error.message.includes('not found')) {
-    // User doesn't exist, create it
-    try {
-      adminDb.createUser({
-        user: username,
-        pwd: password,
-        roles: [{ role: 'searchCoordinator', db: 'admin' }]
-      });
-      print('User ' + username + ' created successfully');
-    } catch (createError) {
-      print('Error creating user: ' + createError);
-      throw createError;
-    }
-  } else {
-    print('Error updating user: ' + error);
-    throw error;
-  }
-}
-"
 
 echo "MongoDB initialization completed."
 
