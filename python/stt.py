@@ -46,6 +46,53 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 NO_SPEECH_DETECTED = object()
 
+
+def ensure_audio_chunk_indexes():
+    index_definitions = [
+        (
+            {
+                'transcribed_at': 1,
+                'processing_by': 1,
+                'vad.has_speech': 1,
+                'start': -1,
+            },
+            {
+                'name': 'audio_chunks_pending_work',
+                'partialFilterExpression': {
+                    'transcribed_at': None,
+                    'processing_by': None,
+                    'vad.has_speech': True,
+                },
+            }
+        ),
+        (
+            {'processing_by': 1},
+            {'name': 'audio_chunks_processing_by'}
+        ),
+        (
+            {'transcribed_at': 1},
+            {'name': 'audio_chunks_transcribed_at'}
+        ),
+    ]
+
+    for index, options in index_definitions:
+        try:
+            call_resource('tech.mycelia.mongo', {
+                "action": "createIndex",
+                "collection": "audio_chunks",
+                "index": index,
+                "options": options,
+            })
+        except Exception as exc:
+            logger.warning(
+                "Failed to ensure audio_chunks index %s: %s",
+                options.get('name'),
+                exc
+            )
+            tqdm.write(f"WARNING: Failed to ensure audio_chunks index {options.get('name')}: {exc}")
+            break
+
+
 class SpeechSequence(BaseModel):
     original_id: ObjectId
     chunks: list[Any] = []
@@ -108,7 +155,7 @@ def get_speech_sequences(limit=10, filters=None, max_sequence_length=30, worker_
 
     if filters:
         base_filters.update(filters)
-    
+
     for chunk in mongo_cursor('audio_chunks', base_filters, {
         "sort": {"start": -1},
     }):
@@ -243,6 +290,7 @@ def process_speech_sequences(limit=None, max_workers=1, worker_id=None):
     if worker_id is None:
         worker_id = f"{socket.gethostname()}_{os.getpid()}"
 
+    ensure_audio_chunk_indexes()
     tqdm.write(f'Worker ID: {worker_id}')
     tqdm.write(f'Using {max_workers} parallel worker(s)')
 

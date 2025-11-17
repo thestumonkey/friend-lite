@@ -275,6 +275,18 @@ This will:
 - Process audio chunks from the database
 - Store transcriptions back to MongoDB
 
+#### Ensure Audio Chunk Indexes
+
+To keep queue checks (`transcribed_at=null`, `processing_by=null`) fast, Mycelia now maintains a partial compound index on `audio_chunks`. The backend creates this index at startup and `python/stt.py` double-checks before processing, but you can rebuild it manually if needed:
+
+```bash
+cd backend
+deno run --env -E='MYCELIA_*' --allow-net cli.ts mcp call tech.mycelia.mongo \
+  -a '{"action":"createIndex","collection":"audio_chunks","index":{"transcribed_at":1,"processing_by":1,"vad.has_speech":1,"start":-1},"options":{"name":"audio_chunks_pending_work","partialFilterExpression":{"transcribed_at":null,"processing_by":null,"vad.has_speech":true}}}'
+```
+
+If you routinely query `processing_by != null` or `transcribed_at != null`, there are also single-field helper indexes (`audio_chunks_processing_by`, `audio_chunks_transcribed_at`) created alongside the compound one.
+
 
 ### Conversation Extraction (python/convos)
 
