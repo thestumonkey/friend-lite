@@ -8,12 +8,34 @@ services:
     environment:
       - REDIS_PASSWORD
   mongo:
-    image: mongo:8.0
+    image: mongo:8.2
+    entrypoint: ["/mongo-entrypoint.sh"]
+    command: mongod --config /etc/mongod.conf
     ports:
       - "27017:27017"
     volumes:
       - .docker/mongo:/data/db
+      - ./mongod.conf:/etc/mongod.conf:ro
+      - ./init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
+      - ./mongo-entrypoint.sh:/mongo-entrypoint.sh:ro
     restart: unless-stopped
     environment:
       - MONGO_INITDB_ROOT_USERNAME
       - MONGO_INITDB_ROOT_PASSWORD
+      - MONGOT_USER
+      - MONGOT_PASSWORD
+  mongo-search:
+    image: mongodb/mongodb-community-search:latest
+    entrypoint: ["/mongot-entrypoint.sh"]
+    ports:
+      - "27028:27028"
+      - "9946:9946"
+    volumes:
+      - .docker/mongo-search:/data/mongot
+      - ./mongot.conf:/mongot-community/config.default.yml:ro
+      - ./mongot-entrypoint.sh:/mongot-entrypoint.sh:ro
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME
+      - MONGO_INITDB_ROOT_PASSWORD
+    depends_on:
+      - mongo

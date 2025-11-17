@@ -375,25 +375,3 @@ export async function insertTranscriptionWithInvalidation(
   await invalidateTimelineForData(auth, startTime, endTime);
   return result.insertedId;
 }
-
-export async function insertDiarizationWithInvalidation(
-  diarizationData: any,
-  startTime: Date,
-  endTime?: Date,
-): Promise<ObjectId> {
-  const auth = await getServerAuth();
-  const mongoResource = await auth.getResource("tech.mycelia.mongo");
-
-  const result = await mongoResource({
-    action: "insertOne",
-    collection: "diarizations",
-    doc: diarizationData,
-  }) as { insertedId: ObjectId };
-
-  console.log(
-    `Diarization created: ${result.insertedId}, start: ${startTime.toISOString()}`,
-  );
-
-  await invalidateTimelineForData(auth, startTime, endTime);
-  return result.insertedId;
-}
