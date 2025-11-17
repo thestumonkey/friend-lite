@@ -210,70 +210,29 @@ uv run daemon.py
 
 ### Speech-to-Text (STT)
 
-Mycelia uses a Whisper-based transcription server to convert audio chunks into text. You can either run the STT server locally or use a remote instance.
+Quick start:
 
-**Prerequisites:** Ensure you've installed PortAudio as described in [python/README.md](python/README.md#portaudio-required-for-sttpy).
+1. Start a Whisper server (local or remote) as documented in `backend/README.md#speech-to-text-stt`.
+2. Transcribe queued audio:
+   ```bash
+   cd python
+   uv run stt.py [--server https://your-stt-server.com/]
+   ```
+3. Inspect the backlog without processing: `uv run stt.py --count`.
 
-#### Option 1: Run Whisper Server Locally
+Detailed setup, advanced flags, queue/index maintenance, and Mongo helper commands now live in `backend/README.md`.
 
-The local Whisper server uses the faster-whisper library and runs best on a machine with a CUDA-compatible GPU, though CPU mode is also supported.
+#### Ensure Audio Chunk Indexes
 
-**Requirements:**
-- Python 3.12+
-- CUDA-compatible GPU (recommended) or CPU
-- FFmpeg (already installed in prerequisites)
-
-**Setup:**
-
-```bash
-cd python/whisper_server
-
-# Install dependencies using uv
-uv sync
-
-# Start the server
-uv run server.py
-```
-
-The server will start on `http://localhost:8081` and use the `large-v3` Whisper model by default.
-
-**Configuration:**
-
-In your `backend/.env` file, set:
-```bash
-STT_SERVER_URL=http://localhost:8081/
-```
-
-#### Option 2: Use Remote STT Server
-
-If you have access to a GPU-enabled machine, you can run the Whisper server there and connect remotely:
-
-1. On the GPU machine, run the Whisper server:
-```bash
-cd python/whisper_server
-uv sync
-uv run server.py
-```
-
-2. In your local `backend/.env` file, set the remote URL:
-```bash
-STT_SERVER_URL=https://your-stt-server.com/
-STT_API_KEY=your_api_key_if_needed
-```
-
-#### Processing Audio Chunks
-
-Once the STT server is running (locally or remotely), process your audio chunks:
+To keep queue checks (`transcribed_at=null`, `processing_by=null`) fast, Mycelia now maintains a partial compound index on `audio_chunks`. The backend creates this index at startup and `python/stt.py` double-checks before processing, but you can rebuild it manually if needed:
 
 ```bash
-cd python
-uv run stt.py
+cd backend
+deno run --env -E='MYCELIA_*' --allow-net cli.ts mcp call tech.mycelia.mongo \
+  -a '{"action":"createIndex","collection":"audio_chunks","index":{"transcribed_at":1,"processing_by":1,"vad.has_speech":1,"start":-1},"options":{"name":"audio_chunks_pending_work","partialFilterExpression":{"transcribed_at":null,"processing_by":null,"vad.has_speech":true}}}'
 ```
 
-This will:
-- Connect to the STT server specified in your `.env`
-- Process audio chunks from the database
-- Store transcriptions back to MongoDB
+If you routinely query `processing_by != null` or `transcribed_at != null`, there are also single-field helper indexes (`audio_chunks_processing_by`, `audio_chunks_transcribed_at`) created alongside the compound one.
 
 
 ### Conversation Extraction (python/convos)

@@ -1,4 +1,5 @@
 import { Db } from "mongodb";
+import type { CreateIndexesOptions, IndexSpecification } from "mongodb";
 import { getRootDB } from "./core.server.ts";
 import type { Resolution } from "@/types/resolution.ts";
 import { RESOLUTION_ORDER } from "@/types/resolution.ts";
@@ -61,13 +62,14 @@ async function ensureGridFSBucketExists(
 async function ensureIndexExists(
   db: Db,
   collectionName: string,
-  indexSpec: Record<string, any>,
-  indexName?: string,
+  indexSpec: IndexSpecification,
+  options: CreateIndexesOptions = {},
 ): Promise<void> {
   await ensureCollectionExists(db, collectionName);
 
   const collection = db.collection(collectionName);
   const indexes = await collection.listIndexes().toArray();
+  const indexName = options.name;
 
   const indexExists = indexes.some((index) => {
     if (indexName) {
@@ -78,13 +80,48 @@ async function ensureIndexExists(
   });
 
   if (!indexExists) {
-    await collection.createIndex(indexSpec, { name: indexName });
+    await collection.createIndex(indexSpec, options);
     console.log(
       `Created index on ${collectionName}: ${
         indexName || JSON.stringify(indexSpec)
       }`,
     );
   }
+}
+
+async function ensureAudioChunksIndexes(db: Db): Promise<void> {
+  await ensureIndexExists(
+    db,
+    "audio_chunks",
+    {
+      transcribed_at: 1,
+      processing_by: 1,
+      "vad.has_speech": 1,
+      start: -1,
+    },
+    {
+      name: "audio_chunks_pending_work",
+      partialFilterExpression: {
+        transcribed_at: null,
+        processing_by: null,
+        "vad.has_speech": true,
+      },
+    },
+  );
+
+  await ensureIndexExists(
+    db,
+    "audio_chunks",
+    { processing_by: 1 },
+    { name: "audio_chunks_processing_by" },
+  );
+
+  await ensureIndexExists(
+    db,
+    "audio_chunks",
+    { transcribed_at: 1 },
+    { name: "audio_chunks_transcribed_at" },
+  );
 }
 
 async function ensureObjectsIndexes(db: Db): Promise<void> {
@@ -96,7 +133,7 @@ async function ensureObjectsIndexes(db: Db): Promise<void> {
       aliases: "text",
       details: "text",
     },
-    "text_search_index",
+    { name: "text_search_index" },
   );
   await ensureIndexExists(
     db,
@@ -105,7 +142,7 @@ async function ensureObjectsIndexes(db: Db): Promise<void> {
       "objectId": 1,
       "timestamp": -1,
     },
-    "object_id",
+    { name: "object_id" },
   );
 }
 
@@ -128,6 +165,7 @@ export async function ensureAllCollectionsExist(): Promise<void> {
 
   // Ensure indexes for specific collections
   await ensureObjectsIndexes(db);
+  await ensureAudioChunksIndexes(db);
 
   console.log(
     `All collections and indexes verified (${regularCollections.length} regular collections, ${gridFSBuckets.length} GridFS buckets)`,
