@@ -2,6 +2,10 @@ import { type TimeFormat, useSettingsStore } from "@/stores/settingsStore";
 import { formatDuration } from "@/modules/time/formatters/si";
 
 export function formatTime(date: Date, format?: TimeFormat): string {
+  if (!date || isNaN(date.getTime())) {
+    return "N/A";
+  }
+
   const actualFormat = format || useSettingsStore.getState().timeFormat;
 
   switch (actualFormat) {

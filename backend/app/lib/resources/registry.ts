@@ -7,6 +7,7 @@ import { TimelineResource } from "@/lib/timeline/resource.server.ts";
 import { ProcessorResource } from "../processors/core.server.ts";
 import { LLMResource } from "@/lib/llm/resource.server.ts";
 import { ObjectsResource } from "@/lib/objects/resource.server.ts";
+import { ApiKeysResource } from "@/lib/auth/apikeys.resource.ts";
 
 const resources = [
   MongoResource,
@@ -16,6 +17,7 @@ const resources = [
   ProcessorResource,
   LLMResource,
   ObjectsResource,
+  ApiKeysResource,
 ];
 
 export async function setupResources(): Promise<void> {

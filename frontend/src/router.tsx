@@ -10,6 +10,7 @@ import APISettingsPage from "./pages/settings/APISettingsPage";
 import LLMSettingsPage from "./pages/settings/LLMSettingsPage";
 import CreateLLMPage from "./pages/settings/CreateLLMPage";
 import LLMDetailPage from "./pages/settings/LLMDetailPage";
+import APIKeysPage from "./pages/settings/APIKeysPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import TranscriptPage from "./pages/TranscriptPage";
 import ObjectsPage from "./pages/ObjectsPage";
@@ -91,6 +92,10 @@ export const router = createBrowserRouter([
           {
             path: "llms/:id",
             element: <LLMDetailPage />,
+          },
+          {
+            path: "api-keys",
+            element: <APIKeysPage />,
           },
         ],
       },

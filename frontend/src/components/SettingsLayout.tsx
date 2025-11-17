@@ -26,6 +26,12 @@ const SettingsLayout = () => {
       icon: Bot,
       description: "Manage LLM models and providers",
     },
+    {
+      name: "API Keys",
+      path: "/settings/api-keys",
+      icon: Key,
+      description: "Manage API keys and policies",
+    },
   ];
 
   return (
