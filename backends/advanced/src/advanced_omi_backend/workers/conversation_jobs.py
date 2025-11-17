@@ -112,12 +112,12 @@ async def open_conversation_job(
 
     # Store conversation_id in Redis for finalize job to find
     conversation_key = f"conversation:session:{session_id}"
-    await redis_client.set(conversation_key, conversation_id, ex=3600)
+    await redis_client.set(conversation_key, conversation_id, ex=86400)  # 24 hour TTL
     logger.info(f"💾 Stored conversation ID in Redis: {conversation_key}")
 
     # Signal audio persistence job to rotate to this conversation's file
     current_conversation_key = f"conversation:current:{session_id}"
-    await redis_client.set(current_conversation_key, conversation_id, ex=3600)
+    await redis_client.set(current_conversation_key, conversation_id, ex=86400)  # 24 hour TTL
     logger.info(f"🔄 Signaled audio persistence to rotate file for conversation {conversation_id[:12]}")
 
     # Use redis_client parameter
@@ -125,7 +125,7 @@ async def open_conversation_job(
 
     # Job control
     session_key = f"audio:session:{session_id}"
-    max_runtime = 3540  # 59 minutes (graceful exit before RQ timeout at 60 min)
+    max_runtime = 10740  # 3 hours - 60 seconds (single conversations shouldn't exceed 3 hours)
     start_time = time.time()
 
     last_result_count = 0
@@ -188,7 +188,7 @@ async def open_conversation_job(
             await redis_client.set(
                 f"conversation:last_speech:{conversation_id}",
                 last_meaningful_speech_time,
-                ex=3600  # 1 hour TTL
+                ex=86400  # 24 hour TTL
             )
             logger.debug(f"🗣️ New speech detected (word count: {current_word_count}), updated last_speech timestamp")
 

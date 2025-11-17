@@ -197,7 +197,7 @@ async def audio_streaming_persistence_job(
 
     # Job control
     session_key = f"audio:session:{session_id}"
-    max_runtime = 3540  # 59 minutes
+    max_runtime = 86340  # 24 hours - 60 seconds (graceful exit before RQ timeout)
     start_time = time.time()
 
     from advanced_omi_backend.config import CHUNK_DIR
@@ -316,7 +316,7 @@ async def audio_streaming_persistence_job(
 
                 # Store file path in Redis (keyed by conversation_id, not session_id)
                 audio_file_key = f"audio:file:{current_conversation_id}"
-                await redis_client.set(audio_file_key, str(file_path), ex=3600)
+                await redis_client.set(audio_file_key, str(file_path), ex=86400)  # 24 hour TTL
                 logger.info(f"💾 Stored audio file path in Redis: {audio_file_key}")
         else:
             # Key deleted - conversation ended, close current file

@@ -39,12 +39,12 @@ DEFAULT_QUEUE = "default"
 QUEUE_NAMES = [DEFAULT_QUEUE, TRANSCRIPTION_QUEUE, MEMORY_QUEUE, AUDIO_QUEUE]
 
 # Job retention configuration
-JOB_RESULT_TTL = int(os.getenv("RQ_RESULT_TTL", 3600))  # 1 hour default
+JOB_RESULT_TTL = int(os.getenv("RQ_RESULT_TTL", 86400))  # 24 hour default
 
 # Create queues with custom result TTL
-transcription_queue = Queue(TRANSCRIPTION_QUEUE, connection=redis_conn, default_timeout=300)
+transcription_queue = Queue(TRANSCRIPTION_QUEUE, connection=redis_conn, default_timeout=86400)  # 24 hours for streaming jobs
 memory_queue = Queue(MEMORY_QUEUE, connection=redis_conn, default_timeout=300)
-audio_queue = Queue(AUDIO_QUEUE, connection=redis_conn, default_timeout=3600)  # 1 hour timeout for long sessions
+audio_queue = Queue(AUDIO_QUEUE, connection=redis_conn, default_timeout=86400)  # 24 hours for all-day sessions
 default_queue = Queue(DEFAULT_QUEUE, connection=redis_conn, default_timeout=300)
 
 
@@ -271,7 +271,7 @@ def start_streaming_jobs(
         session_id,
         user_id,
         client_id,
-        job_timeout=3600,  # 1 hour for long recordings
+        job_timeout=86400,  # 24 hours for all-day sessions
         result_ttl=JOB_RESULT_TTL,
         job_id=f"speech-detect_{session_id[:12]}",
         description=f"Listening for speech...",
@@ -281,7 +281,7 @@ def start_streaming_jobs(
 
     # Store job ID for cleanup (keyed by client_id for easy WebSocket cleanup)
     try:
-        redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=3600)  # 1 hour TTL
+        redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=86400)  # 24 hour TTL
         logger.info(f"📌 Stored speech detection job ID for client {client_id}")
     except Exception as e:
         logger.warning(f"⚠️ Failed to store job ID for {client_id}: {e}")
@@ -294,7 +294,7 @@ def start_streaming_jobs(
         session_id,
         user_id,
         client_id,
-        job_timeout=3600,  # 1 hour for long recordings
+        job_timeout=86400,  # 24 hours for all-day sessions
         result_ttl=JOB_RESULT_TTL,
         job_id=f"audio-persist_{session_id[:12]}",
         description=f"Audio persistence for session {session_id[:12]}",
