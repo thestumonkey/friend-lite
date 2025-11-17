@@ -221,18 +221,30 @@ async def recognise_speakers_job(
         logger.info(f"🎤 Speaker recognition returned {len(speaker_segments)} segments")
 
         # Update the transcript version segments with identified speakers
+        # Filter out empty segments (diarization sometimes creates segments with no text)
         updated_segments = []
+        empty_segment_count = 0
         for seg in speaker_segments:
+            segment_text = seg.get("text", "").strip()
+
+            # Skip segments with no text
+            if not segment_text:
+                empty_segment_count += 1
+                continue
+
             speaker_name = seg.get("identified_as") or seg.get("speaker", "Unknown")
             updated_segments.append(
                 Conversation.SpeakerSegment(
                     start=seg.get("start", 0),
                     end=seg.get("end", 0),
-                    text=seg.get("text", ""),
+                    text=segment_text,
                     speaker=speaker_name,
                     confidence=seg.get("confidence")
                 )
             )
+
+        if empty_segment_count > 0:
+            logger.info(f"🔇 Filtered out {empty_segment_count} empty segments from speaker recognition")
 
         # Update the transcript version
         transcript_version.segments = updated_segments
