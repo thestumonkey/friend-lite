@@ -21,8 +21,6 @@ from typing import TypedDict
 from langchain_openai import ChatOpenAI
 
 
-llm = get_llm('small')
-
 entity_to_id_map = {}
 
 class Utterance(TypedDict):
@@ -70,7 +68,7 @@ def get_segments(chunk: list[Utterance], model: str = "small") -> list[tuple[Seg
     prompt, chunk_start, chunk_end = chunk_to_prompt(chunk)
 
     system_prompts = get_prompts()
-    # llm = get_llm(model)
+    llm = get_llm(model)
 
     class Output(BaseModel):
         segments: list[Segment]
@@ -122,7 +120,7 @@ def process_segment(segment: Segment, utterances: list[Utterance], model: str = 
     prompt, chunk_start, chunk_end = chunk_to_prompt(utterances)
 
     system_prompts = get_prompts()
-    # llm = get_llm(model)
+    llm = get_llm(model)
 
     conversation: Conversation = get_structured_output([
         SystemMessage(system_prompts["conversation"]["pre"]["text"]),
