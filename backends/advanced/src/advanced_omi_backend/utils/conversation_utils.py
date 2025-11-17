@@ -320,7 +320,7 @@ Rules:
 - Provide complete coverage of all topics, points, and important details discussed
 - Correct obvious transcription errors and remove filler words (um, uh, like, you know)
 - Organize information logically by topic or chronologically as appropriate
-- Use clear, well-structured paragraphs or bullet points
+- Use clear, well-structured paragraphs or bullet points, but make the length relative to the amound of content.
 - Maintain the meaning and intent of what was said, but improve clarity and coherence
 - Include relevant context, decisions made, action items mentioned, and conclusions reached
 {speaker_instruction}- Write in a natural, flowing narrative style
