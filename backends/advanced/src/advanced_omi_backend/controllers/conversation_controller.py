@@ -315,7 +315,7 @@ async def reprocess_transcript(conversation_id: str, user: User):
         from advanced_omi_backend.workers.speaker_jobs import recognise_speakers_job
         from advanced_omi_backend.workers.audio_jobs import process_cropping_job
         from advanced_omi_backend.workers.memory_jobs import process_memory_job
-        from advanced_omi_backend.controllers.queue_controller import transcription_queue, memory_queue, default_queue, JOB_RESULT_TTL, redis_conn
+        from advanced_omi_backend.controllers.queue_controller import transcription_queue, memory_queue, default_queue, JOB_RESULT_TTL
 
         # Job 1: Transcribe audio to text
         transcript_job = transcription_queue.enqueue(
@@ -366,10 +366,10 @@ async def reprocess_transcript(conversation_id: str, user: User):
         logger.info(f"📥 RQ: Enqueued audio cropping job {cropping_job.id} (depends on {speaker_job.id})")
 
         # Job 4: Extract memories (depends on cropping)
+        # Note: redis_client is injected by @async_job decorator, don't pass it directly
         memory_job = memory_queue.enqueue(
             process_memory_job,
             conversation_id,
-            redis_conn,
             depends_on=cropping_job,
             job_timeout=1800,
             result_ttl=JOB_RESULT_TTL,

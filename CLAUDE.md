@@ -38,6 +38,9 @@ uv run pytest tests/test_memory_service.py  # Single test file
 # Environment setup
 cp .env.template .env  # Configure environment variables
 
+# Setup test environment (optional, for running integration tests)
+uv run --with-requirements setup-requirements.txt python setup_test_env.py  # Creates .env.test
+
 # Reset data (development)
 sudo rm -rf backends/advanced/data/
 ```
@@ -67,6 +70,10 @@ cd backends/advanced
 
 # Requires .env file with DEEPGRAM_API_KEY and OPENAI_API_KEY
 cp .env.template .env  # Configure API keys
+
+# Optional: Setup test environment with test-specific credentials
+# (wizard.py prompts for this, or run manually)
+uv run --with-requirements setup-requirements.txt python setup_test_env.py
 
 # Run full integration test suite
 ./run-test.sh
