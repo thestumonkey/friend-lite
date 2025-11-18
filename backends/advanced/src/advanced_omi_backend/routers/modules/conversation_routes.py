@@ -50,15 +50,6 @@ async def get_cropped_audio_info(
     return await audio_controller.get_cropped_audio_info(audio_uuid, current_user)
 
 
-# Deprecated
-@router.post("/{audio_uuid}/reprocess")
-async def reprocess_audio_cropping(
-    audio_uuid: str, current_user: User = Depends(current_active_user)
-):
-    """Reprocess audio cropping for a conversation. Users can only reprocess their own conversations."""
-    return await audio_controller.reprocess_audio_cropping(audio_uuid, current_user)
-
-
 # New reprocessing endpoints
 @router.post("/{conversation_id}/reprocess-transcript")
 async def reprocess_transcript(
