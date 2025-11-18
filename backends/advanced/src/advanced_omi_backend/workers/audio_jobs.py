@@ -79,7 +79,7 @@ async def process_cropping_job(
         output_path = CHUNK_DIR / cropped_filename
 
         # Process cropping (no repository needed - we update conversation directly)
-        success = await _process_audio_cropping_with_relative_timestamps(
+        success, segment_mapping = await _process_audio_cropping_with_relative_timestamps(
             str(original_path),
             speech_segments,
             str(output_path),
@@ -95,21 +95,38 @@ async def process_cropping_job(
                 "reason": "cropping_failed"
             }
 
-        # Calculate cropped duration
-        cropped_duration_seconds = sum(end - start for start, end in speech_segments)
+        # Calculate actual cropped duration from kept segments
+        kept_segments = [m for m in segment_mapping if m["kept"]]
+        if kept_segments:
+            # Duration is end of last kept segment
+            cropped_duration_seconds = kept_segments[-1]["cropped_end"]
+        else:
+            cropped_duration_seconds = 0.0
 
-        # Update segment timestamps to match cropped audio
-        # After cropping, segments are concatenated, so they need new timestamps
+        # Update segment timestamps using the mapping
+        # Only keep segments that weren't filtered out
         updated_segments = []
-        current_time = 0.0
         for i, seg in enumerate(segments):
-            original_duration = seg.end - seg.start
-            updated_seg = seg.model_copy()
-            updated_seg.start = current_time
-            updated_seg.end = current_time + original_duration
-            updated_segments.append(updated_seg)
-            current_time += original_duration
-            logger.debug(f"Updated segment {i}: {seg.start:.2f}-{seg.end:.2f}s → {updated_seg.start:.2f}-{updated_seg.end:.2f}s")
+            if i >= len(segment_mapping):
+                logger.warning(f"⚠️ Segment {i} not in mapping, skipping")
+                continue
+
+            mapping = segment_mapping[i]
+            if mapping["kept"]:
+                # Segment was kept - use the cropped timestamps
+                updated_seg = seg.model_copy()
+                updated_seg.start = mapping["cropped_start"]
+                updated_seg.end = mapping["cropped_end"]
+                updated_segments.append(updated_seg)
+                logger.debug(
+                    f"Segment {i}: {seg.start:.2f}-{seg.end:.2f}s → "
+                    f"{updated_seg.start:.2f}-{updated_seg.end:.2f}s (in cropped audio)"
+                )
+            else:
+                # Segment was filtered out (too short)
+                logger.debug(
+                    f"Segment {i} filtered out (duration {seg.end - seg.start:.2f}s < MIN_SPEECH_SEGMENT_DURATION)"
+                )
 
         # Update conversation with cropped audio path and adjusted segments
         conversation.cropped_audio_path = cropped_filename

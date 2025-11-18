@@ -264,7 +264,7 @@ async def _process_audio_cropping_with_relative_timestamps(
     output_path: str,
     audio_uuid: str,
     _deprecated_chunk_repo=None,  # Deprecated - kept for backward compatibility
-) -> bool:
+) -> tuple[bool, list[dict]]:
     """
     Process audio cropping with speech segments already in relative format.
 
@@ -272,6 +272,9 @@ async def _process_audio_cropping_with_relative_timestamps(
     as provided by Deepgram transcription. No timestamp conversion is needed.
 
     Note: Database updates are now handled by the caller (audio_jobs.py).
+
+    Returns:
+        Tuple of (success: bool, segment_mapping: list[dict])
     """
     try:
         # Validate input segments
@@ -307,19 +310,19 @@ async def _process_audio_cropping_with_relative_timestamps(
             logger.warning(
                 f"No valid segments for cropping {audio_uuid}"
             )
-            return False
+            return False, []
 
-        success = await _crop_audio_with_ffmpeg(original_path, validated_segments, output_path)
+        success, segment_mapping = await _crop_audio_with_ffmpeg(original_path, validated_segments, output_path)
         if success:
             cropped_filename = output_path.split("/")[-1]
             logger.info(f"Successfully processed cropped audio: {cropped_filename}")
-            return True
+            return True, segment_mapping
         else:
             logger.error(f"Failed to crop audio for {audio_uuid}")
-            return False
+            return False, segment_mapping
     except Exception as e:
         logger.error(f"Error in audio cropping task for {audio_uuid}: {e}", exc_info=True)
-        return False
+        return False, []
 
 
 def write_pcm_to_wav(
@@ -367,29 +370,72 @@ def write_pcm_to_wav(
 
 async def _crop_audio_with_ffmpeg(
     original_path: str, speech_segments: list[tuple[float, float]], output_path: str
-) -> bool:
-    """Use ffmpeg to crop audio - runs as async subprocess, no GIL issues"""
+) -> tuple[bool, list[dict]]:
+    """
+    Use ffmpeg to crop audio - runs as async subprocess, no GIL issues.
+
+    Returns:
+        Tuple of (success: bool, segment_mapping: list[dict])
+
+        segment_mapping contains one entry per input segment with:
+        - original_index: Index in input speech_segments
+        - original_start/end: Original timestamps in source audio
+        - cropped_start/end: Where the speech starts/ends in cropped file (None if filtered)
+        - kept: Whether segment was kept (True) or filtered out (False)
+    """
     logger.info(f"Cropping audio {original_path} with {len(speech_segments)} speech segments")
 
     if not speech_segments:
         logger.warning(f"No speech segments to crop for {original_path}")
-        return False
+        return False, []
 
     # Check if the original file exists
     if not os.path.exists(original_path):
         logger.error(f"Original audio file does not exist: {original_path}")
-        return False
+        return False, []
 
-    # Filter out segments that are too short
+    # Filter out segments that are too short and build mapping
     filtered_segments = []
-    for start, end in speech_segments:
+    segment_mapping = []
+    current_cropped_offset = 0.0
+
+    for idx, (start, end) in enumerate(speech_segments):
         duration = end - start
         if duration >= MIN_SPEECH_SEGMENT_DURATION:
             # Add padding around speech segments
             padded_start = max(0, start - CROPPING_CONTEXT_PADDING)
             padded_end = end + CROPPING_CONTEXT_PADDING
+            padded_duration = padded_end - padded_start
+
             filtered_segments.append((padded_start, padded_end))
+
+            # Calculate where the speech (not padding) appears in cropped file
+            # The cropped file will have: [padding_before][speech][padding_after]
+            padding_before = start - padded_start
+            speech_start_in_cropped = current_cropped_offset + padding_before
+            speech_end_in_cropped = speech_start_in_cropped + duration
+
+            segment_mapping.append({
+                "original_index": idx,
+                "original_start": start,
+                "original_end": end,
+                "cropped_start": speech_start_in_cropped,
+                "cropped_end": speech_end_in_cropped,
+                "kept": True
+            })
+
+            # Move offset by the full padded duration
+            current_cropped_offset += padded_duration
         else:
+            # Segment filtered out
+            segment_mapping.append({
+                "original_index": idx,
+                "original_start": start,
+                "original_end": end,
+                "cropped_start": None,
+                "cropped_end": None,
+                "kept": False
+            })
             logger.debug(
                 f"Skipping short segment: {start}-{end} ({duration:.2f}s < {MIN_SPEECH_SEGMENT_DURATION}s)"
             )
@@ -398,7 +444,7 @@ async def _crop_audio_with_ffmpeg(
         logger.warning(
             f"No segments meet minimum duration ({MIN_SPEECH_SEGMENT_DURATION}s) for {original_path}"
         )
-        return False
+        return False, segment_mapping
 
     logger.info(
         f"Cropping audio {original_path} with {len(filtered_segments)} speech segments (filtered from {len(speech_segments)})"
@@ -450,12 +496,12 @@ async def _crop_audio_with_ffmpeg(
             logger.info(
                 f"Successfully cropped {original_path} -> {output_path} ({cropped_duration:.1f}s from {len(filtered_segments)} segments)"
             )
-            return True
+            return True, segment_mapping
         else:
             error_msg = stderr.decode() if stderr else "Unknown ffmpeg error"
             logger.error(f"ffmpeg failed for {original_path}: {error_msg}")
-            return False
+            return False, segment_mapping
 
     except Exception as e:
         logger.error(f"Error running ffmpeg on {original_path}: {e}", exc_info=True)
-        return False
+        return False, segment_mapping
