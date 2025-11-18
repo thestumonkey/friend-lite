@@ -55,26 +55,6 @@ async def get_auth_config():
     }
 
 
-async def get_all_processing_tasks():
-    """Get all active processing tasks.
-
-    NOTE: This function is deprecated - old processor architecture has been removed.
-    Kept for backward compatibility but always returns empty list.
-    """
-    logger.warning("get_all_processing_tasks called - deprecated function")
-    return []
-
-
-async def get_processing_task_status(client_id: str):
-    """Get processing task status for a specific client.
-
-    NOTE: This function is deprecated - old processor architecture has been removed.
-    Kept for backward compatibility but always returns None.
-    """
-    logger.warning(f"get_processing_task_status called for {client_id} - deprecated function")
-    return None
-
-
 async def get_processor_status():
     """Get RQ worker and queue status."""
     try:
