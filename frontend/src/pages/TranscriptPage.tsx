@@ -498,6 +498,7 @@ const TranscriptPage = () => {
                       {gapBadge}
                       <div className="flex items-center gap-2 mb-1">
                         <button
+                          type="button"
                           onClick={() => handlePlayFromSegment(seg.time)}
                           className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
                           title="Play from here"

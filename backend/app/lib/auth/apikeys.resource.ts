@@ -3,7 +3,7 @@ import { ObjectId } from "bson";
 import { Resource, defaultResourceManager } from "@/lib/auth/resources.ts";
 import { type Auth } from "@/lib/auth/core.server.ts";
 import { generateApiKey, listApiKeys, revokeApiKey, updateApiKeyPolicies } from "./tokens.ts";
-import { parse as parseYaml, stringify as stringifyYaml } from "jsr:@std/yaml@1.0.10";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Policy } from "./resources.ts";
 
 const listApiKeysSchema = z.object({

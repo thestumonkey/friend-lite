@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Bot, Database, Key, Monitor, Palette, Settings } from "lucide-react";
+import { Bot, Database, Key, Monitor, Palette, Settings, Flag, FileText } from "lucide-react";
 
 const SettingsLayout = () => {
   const location = useLocation();
@@ -31,6 +31,18 @@ const SettingsLayout = () => {
       path: "/settings/api-keys",
       icon: Key,
       description: "Manage API keys and policies",
+    },
+    {
+      name: "Feature Flags",
+      path: "/settings/feature-flags",
+      icon: Flag,
+      description: "Enable or disable server features",
+    },
+    {
+      name: "Prompts",
+      path: "/settings/prompts",
+      icon: FileText,
+      description: "Manage system prompts",
     },
   ];
 
@@ -88,7 +100,7 @@ const SettingsLayout = () => {
             <div className="space-y-1">
               {serverSettings.map((tab) => {
                 const Icon = tab.icon;
-                const isActive = location.pathname === tab.path;
+                const isActive = location.pathname === tab.path || location.pathname.startsWith(tab.path);
 
                 return (
                   <Link

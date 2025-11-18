@@ -2,7 +2,6 @@ import { Resource } from "@/lib/auth/resources.ts";
 import { Auth } from "@/lib/auth/core.server.ts";
 import { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { z } from "zod";
 
 interface MCPToolMetadata {
   resource: Resource<any, any>;
@@ -55,9 +54,9 @@ export function resourceToMCPTools<Input, Output>(
 ): Tool[] {
   const schema = resource.schemas.request;
 
-  if (schema._def?.typeName === "ZodDiscriminatedUnion") {
-    const discriminator = schema._def.discriminator;
-    const optionsMap = schema._def.optionsMap;
+  if (schema.def?.typeName === "ZodDiscriminatedUnion") {
+    const discriminator = schema.def.discriminator;
+    const optionsMap = schema.def.optionsMap;
     const tools: Tool[] = [];
 
     for (const [actionValue, actionSchema] of optionsMap.entries()) {
@@ -120,7 +119,7 @@ export async function handleMCPToolCall(
 
     return {
       content: [],
-      structuredContent: result as any,
+      structuredContent: { result },
       isError: false,
     };
   } catch (error) {

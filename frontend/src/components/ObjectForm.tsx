@@ -42,7 +42,7 @@ const renderIcon = (icon: any) => {
 
 // Extract known fields from the Zod schema
 const KNOWN_FIELDS = new Set(
-  Object.keys((zObject as any)._def.schema.shape),
+  Object.keys(zObject.shape),
 );
 
 const getTypeString = (value: any): string => {

@@ -11,6 +11,9 @@ import LLMSettingsPage from "./pages/settings/LLMSettingsPage";
 import CreateLLMPage from "./pages/settings/CreateLLMPage";
 import LLMDetailPage from "./pages/settings/LLMDetailPage";
 import APIKeysPage from "./pages/settings/APIKeysPage";
+import FeatureFlagsPage from "./pages/settings/FeatureFlagsPage";
+import PromptsPage from "./pages/settings/PromptsPage";
+import PromptDetailPage from "./pages/settings/PromptDetailPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import TranscriptPage from "./pages/TranscriptPage";
 import ObjectsPage from "./pages/ObjectsPage";
@@ -101,6 +104,22 @@ export const router = createBrowserRouter([
           {
             path: "api-keys",
             element: <APIKeysPage />,
+          },
+          {
+            path: "feature-flags",
+            element: <FeatureFlagsPage />,
+          },
+          {
+            path: "prompts",
+            element: <PromptsPage />,
+          },
+          {
+            path: "prompts/new",
+            element: <PromptDetailPage />,
+          },
+          {
+            path: "prompts/:id",
+            element: <PromptDetailPage />,
           },
         ],
       },

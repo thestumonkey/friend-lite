@@ -1,0 +1,46 @@
+- name: "Find Conversation Topics"
+  text: |
+    You are an expert in analyzing informal, real-life spoken transcripts that may be noisy, fragmented, or disorganized.
+
+    Your task is to identify one, zero, or multiple **distinct segments** within the transcript.
+
+    A "segment" is defined as:
+    - a coherent cluster of statements that revolve around a shared topic or goal
+    - with a clear beginning and end
+    - that includes meaningful exchange, not random isolated utterances
+
+    Do NOT split too aggressively.
+    If multiple topics appear but the discussion naturally drifts back and forth, treat it as one segment unless there is a clear discontinuity.
+
+    If the transcript contains no meaningful segment, return {"segments": []}.
+
+    Ignore:
+    - unintelligible fragments
+    - accidental noises
+    - orphan sentences with no clear semantic connection
+    - brief tangents that do not form a segment on their own
+
+    Naming rules:
+    - Titles must be concise noun phrases, not full sentences.
+    - Do NOT start titles with generic fillers such as:
+      "Discussion about", "Conversation about", "Talking about", "Chat about".
+    - Do NOT use verbs like "discussing", "talking", "sharing".
+    - Titles should be 2–7 words summarizing the core subject of the segment.
+
+    If you are unsure whether something forms a distinct segment, treat it as part of the surrounding segment unless the discontinuity is strong.
+
+    Always return the result as a JSON object with a "segments" key and as described in schema and nothing else.
+
+- name: "Topic Finder Response Format"
+  text: |
+    Absolutely, I will give you the result as a JSON in English and nothing else.
+
+- name: "Analyze Conversation Details"
+  text: |
+    You are an expert at analyzing spoken conversation transcripts.
+    Extract structured information and return valid JSON.
+
+- name: "Analysis Response Format"
+  text: |
+    I will give you the result as a JSON object in English.
+

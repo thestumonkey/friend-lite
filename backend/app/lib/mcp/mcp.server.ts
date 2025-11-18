@@ -10,7 +10,7 @@ import {
   Prompt,
   GetPromptResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createMCPToolsFromResources } from "./adapter.ts";
+import { createMCPToolsFromResources, handleMCPToolCall } from "./adapter.ts";
 import { EJSON } from "bson";
 
 // Detect JSON-RPC message type
@@ -116,66 +116,16 @@ export async function handleMCPRequest(
           } as JSONRPCError;
         }
 
-        const resource = resourceManager.listResources().find((r) =>
-          r.code === name
-        );
-        if (!resource) {
-          return {
-            jsonrpc: "2.0",
-            id: request.id,
-            error: {
-              code: -32601,
-              message: `Tool '${name}' not found`,
-            },
-          } as JSONRPCError;
-        }
+        const resources = resourceManager.listResources();
+        createMCPToolsFromResources(resources);
 
-        try {
-          const run = await resourceManager.getResource(
-            name,
-            auth,
-          );
-          try {
-            const deserializedArgs = EJSON.deserialize(args ?? {} as any);
-            const result = await run(deserializedArgs);
+        const result = await handleMCPToolCall(name, auth, args ?? {});
 
-            return {
-              jsonrpc: "2.0",
-              id: request.id,
-              result: {
-                content: [{
-                  type: "text",
-                  text: EJSON.stringify(result),
-                }],
-                isError: false,
-              } as CallToolResult,
-            };
-          } catch (error) {
-            if (error instanceof Response) {
-              return {
-                jsonrpc: "2.0",
-                id: request.id,
-                error: {
-                  code: -32602,
-                  message: "Invalid params",
-                },
-              } as JSONRPCError;
-            }
-            throw error;
-          }
-        } catch (error) {
-          return {
-            jsonrpc: "2.0",
-            id: request.id,
-            result: {
-              content: [{
-                type: "text",
-                text: `Error: ${(error as Error).message}`,
-              }],
-              isError: true,
-            } as CallToolResult,
-          };
-        }
+        return {
+          jsonrpc: "2.0",
+          id: request.id,
+          result,
+        };
       }
 
       default:

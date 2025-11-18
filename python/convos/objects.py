@@ -62,6 +62,7 @@ def check_conversations_exist(start: datetime, end: datetime) -> bool:
     existing_list = call_resource("tech.mycelia.objects", {
         "action": "list",
         "filters": {
+            "isConversation": True,
             "timeRanges": {
                 "$elemMatch": {
                     "start": {"$lt": end},
@@ -79,6 +80,7 @@ def delete_conversations_in_range(start: datetime, end: datetime) -> int:
     conversations = call_resource("tech.mycelia.objects", {
         "action": "list",
         "filters": {
+            "isConversation": True,
             "timeRanges": {
                 "$elemMatch": {
                     "start": {"$lt": end},

@@ -2,12 +2,13 @@
 
 from datetime import timedelta
 from pathlib import Path
-
-import yaml
+from bson import ObjectId
 
 from convos.utils import get_silence_message, get_timestamp_message
+from lib.resources import call_resource
 
 
+SERVER_CONFIG_ID = ObjectId("000000000000000000000000")
 
 
 def chunk_to_prompt(chunk: list[dict]):
@@ -30,5 +31,28 @@ def chunk_to_prompt(chunk: list[dict]):
 
 
 def get_prompts():
-    with open(Path(__file__).parent / "prompts.yml", "r") as f:
-        return yaml.safe_load(f)
+    config = call_resource("tech.mycelia.mongo", {
+        "action": "findOne",
+        "collection": "configs",
+        "query": {"_id": SERVER_CONFIG_ID}
+    })
+
+    if not config or not config.get("prompts"):
+        raise RuntimeError("Server configuration not found or missing prompts mapping")
+
+    prompt_ids = list(config["prompts"].values())
+
+    prompts_list = call_resource("tech.mycelia.mongo", {
+        "action": "find",
+        "collection": "prompts",
+        "query": {"_id": {"$in": prompt_ids}}
+    })
+
+    prompts_map = {p["_id"]: p for p in prompts_list}
+
+    result = {}
+    for key, prompt_id in config["prompts"].items():
+        if prompt_id in prompts_map:
+            result[key] = prompts_map[prompt_id]["text"]
+            
+    return result

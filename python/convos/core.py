@@ -67,14 +67,14 @@ def clip(x,lower, upper):
 def get_segments(chunk: list[Utterance], model: str = "small") -> list[tuple[Segment, list[Utterance]]]:
     prompt, chunk_start, chunk_end = chunk_to_prompt(chunk)
 
-    system_prompts = get_prompts()
+    prompts = get_prompts()
     llm = get_llm(model)
 
     class Output(BaseModel):
         segments: list[Segment]
 
     response: Output = get_structured_output([
-        SystemMessage(system_prompts["segments"]["pre"]["text"]),
+        SystemMessage(prompts["segmentation_system"]),
         HumanMessage(content=prompt),
     ], Output, llm)
 
@@ -149,13 +149,13 @@ def create_relationship(conversation_id, mentioned_entity_name):
 def process_segment(segment: Segment, utterances: list[Utterance], model: str = "small"):
     prompt, chunk_start, chunk_end = chunk_to_prompt(utterances)
 
-    system_prompts = get_prompts()
+    prompts = get_prompts()
     llm = get_llm(model)
 
     conversation: Conversation = get_structured_output([
-        SystemMessage(system_prompts["conversation"]["pre"]["text"]),
+        SystemMessage(prompts["summarization_system"]),
         HumanMessage(content=prompt),
-        AIMessage(content=system_prompts["conversation"]["post"]["text"])
+        AIMessage(content=prompts["summarization_guidance"])
     ], Conversation, llm)
 
     result = call_resource("tech.mycelia.objects", {
