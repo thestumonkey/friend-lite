@@ -6,12 +6,152 @@ This module contains jobs related to conversation management and updates.
 
 import asyncio
 import logging
-import time
+import time, os
+from datetime import datetime
 from typing import Dict, Any
-
+from rq.job import Job
 from advanced_omi_backend.models.job import async_job
+from advanced_omi_backend.controllers.queue_controller import redis_conn
+
+from advanced_omi_backend.utils.conversation_utils import (
+    analyze_speech,
+    extract_speakers_from_segments,
+    track_speech_activity,
+    update_job_progress_metadata,
+)
+from advanced_omi_backend.utils.conversation_utils import (
+    is_meaningful_speech,
+    mark_conversation_deleted,
+)
+
+from advanced_omi_backend.controllers.queue_controller import start_post_conversation_jobs
 
 logger = logging.getLogger(__name__)
+
+
+async def handle_end_of_conversation(
+    session_id: str,
+    conversation_id: str,
+    client_id: str,
+    user_id: str,
+    start_time: float,
+    last_result_count: int,
+    timeout_triggered: bool,
+    redis_client,
+) -> Dict[str, Any]:
+    """
+    Handle end-of-conversation cleanup and session restart logic.
+
+    This function is called at the end of open_conversation_job to:
+    1. Clean up Redis streams and tracking keys
+    2. Increment conversation count for the session
+    3. Re-enqueue speech detection job if session is still active
+
+    Args:
+        session_id: Stream session ID
+        conversation_id: Conversation ID that just completed
+        client_id: Client ID
+        user_id: User ID
+        start_time: Job start time (for runtime calculation)
+        last_result_count: Number of transcription results processed
+        timeout_triggered: Whether closure was due to inactivity timeout
+        redis_client: Redis client instance
+
+    Returns:
+        Dict with conversation_id, conversation_count, final_result_count, runtime_seconds, timeout_triggered
+    """
+    # Clean up Redis streams to prevent memory leaks
+    try:
+        # NOTE: Do NOT delete audio:stream:{client_id} here!
+        # The audio stream is per-client (WebSocket connection), not per-conversation.
+        # It's still actively receiving audio and will be reused by the next conversation.
+        # Only delete it on WebSocket disconnect (handled in websocket_controller.py)
+
+        # Delete the transcription results stream (per-session/conversation)
+        results_stream_key = f"transcription:results:{session_id}"
+        await redis_client.delete(results_stream_key)
+        logger.info(f"🧹 Deleted results stream: {results_stream_key}")
+
+        # Set TTL on session key (expire after 1 hour)
+        session_key = f"audio:session:{session_id}"
+        await redis_client.expire(session_key, 3600)
+        logger.info(f"⏰ Set TTL on session key: {session_key}")
+    except Exception as cleanup_error:
+        logger.warning(f"⚠️ Error during stream cleanup: {cleanup_error}")
+
+    # Clean up Redis tracking keys so speech detection job knows conversation is complete
+    open_job_key = f"open_conversation:session:{session_id}"
+    await redis_client.delete(open_job_key)
+    logger.info(f"🧹 Cleaned up tracking key {open_job_key}")
+
+    # Delete the conversation:current signal so audio persistence knows conversation ended
+    current_conversation_key = f"conversation:current:{session_id}"
+    await redis_client.delete(current_conversation_key)
+    logger.info(f"🧹 Deleted conversation:current signal for session {session_id[:12]}")
+
+    # Increment conversation count for this session
+    conversation_count_key = f"session:conversation_count:{session_id}"
+    conversation_count = await redis_client.incr(conversation_count_key)
+    await redis_client.expire(conversation_count_key, 3600)  # 1 hour TTL
+    logger.info(f"📊 Conversation count for session {session_id}: {conversation_count}")
+
+    # Check if session is still active (user still recording) and restart listening jobs
+    session_key = f"audio:session:{session_id}"
+    session_status = await redis_client.hget(session_key, "status")
+    if session_status:
+        status_str = (
+            session_status.decode() if isinstance(session_status, bytes) else session_status
+        )
+
+        if status_str == "active":
+            # Session still active - enqueue new speech detection for next conversation
+            logger.info(
+                f"🔄 Enqueueing new speech detection (conversation #{conversation_count + 1})"
+            )
+
+            from advanced_omi_backend.controllers.queue_controller import (
+                transcription_queue,
+                redis_conn,
+                JOB_RESULT_TTL,
+            )
+            from advanced_omi_backend.workers.transcription_jobs import stream_speech_detection_job
+
+            # Enqueue speech detection job for next conversation (audio persistence keeps running)
+            speech_job = transcription_queue.enqueue(
+                stream_speech_detection_job,
+                session_id,
+                user_id,
+                client_id,
+                job_timeout=3600,
+                result_ttl=JOB_RESULT_TTL,
+                job_id=f"speech-detect_{session_id[:12]}_{conversation_count}",
+                description=f"Listening for speech (conversation #{conversation_count + 1})",
+                meta={"audio_uuid": session_id, "client_id": client_id, "session_level": True},
+            )
+
+            # Store job ID for cleanup (keyed by client_id for WebSocket cleanup)
+            try:
+                redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=3600)
+                logger.info(f"📌 Stored speech detection job ID for client {client_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to store job ID for {client_id}: {e}")
+
+            logger.info(f"✅ Enqueued speech detection job {speech_job.id}")
+        else:
+            logger.info(
+                f"Session {session_id} status={status_str}, not restarting (user stopped recording)"
+            )
+    else:
+        logger.info(f"Session {session_id} not found, not restarting (session ended)")
+
+    return {
+        "conversation_id": conversation_id,
+        "conversation_count": conversation_count,
+        "deleted": False,  # This conversation was not deleted (normal completion)
+        "final_result_count": last_result_count,
+        "runtime_seconds": time.time() - start_time,
+        "timeout_triggered": timeout_triggered,
+    }
 
 
 @async_job(redis=True, beanie=True)
@@ -22,7 +162,7 @@ async def open_conversation_job(
     speech_detected_at: float,
     speech_job_id: str = None,
     *,
-    redis_client=None
+    redis_client=None,
 ) -> Dict[str, Any]:
     """
     Long-running RQ job that creates and continuously updates conversation with transcription results.
@@ -46,18 +186,22 @@ async def open_conversation_job(
     from advanced_omi_backend.models.conversation import Conversation, create_conversation
     from rq import get_current_job
 
-    logger.info(f"📝 Creating and opening conversation for session {session_id} (speech detected at {speech_detected_at})")
+    logger.info(
+        f"📝 Creating and opening conversation for session {session_id} (speech detected at {speech_detected_at})"
+    )
 
     # Get current job for meta storage
     current_job = get_current_job()
-
+    current_job.meta = {}
+    current_job.save_meta()
+    
     # Create minimal streaming conversation (conversation_id auto-generated)
     conversation = create_conversation(
         audio_uuid=session_id,
         user_id=user_id,
         client_id=client_id,
         title="Recording...",
-        summary="Transcribing audio..."
+        summary="Transcribing audio...",
     )
 
     # Save to database
@@ -65,60 +209,24 @@ async def open_conversation_job(
     conversation_id = conversation.conversation_id  # Get the auto-generated ID
     logger.info(f"✅ Created streaming conversation {conversation_id} for session {session_id}")
 
-    # Update THIS job's metadata with conversation_id (for Queue page grouping)
-    if current_job:
-        if not current_job.meta:
-            current_job.meta = {}
-        current_job.meta['conversation_id'] = conversation_id
-        current_job.save_meta()
-        logger.info(f"🔗 Updated open_conversation_job {current_job.id[:12]} metadata with conversation_id")
-
-    # Update speech detection job metadata with conversation_id
-    if speech_job_id:
-        try:
-            from rq.job import Job
-            from advanced_omi_backend.controllers.queue_controller import redis_conn
-
-            speech_job = Job.fetch(speech_job_id, connection=redis_conn)
-            if speech_job and speech_job.meta:
-                # Only update if conversation_id not already set (first conversation wins)
-                if not speech_job.meta.get('conversation_id'):
-                    speech_job.meta['conversation_id'] = conversation_id
-                    # Remove session_level flag - now linked to conversation
-                    speech_job.meta.pop('session_level', None)
-                    speech_job.save_meta()
-                    logger.info(f"🔗 Updated speech job {speech_job_id[:12]} with conversation_id")
-                else:
-                    logger.info(f"⏭️ Speech job {speech_job_id[:12]} already linked to conversation {speech_job.meta.get('conversation_id')[:12]}")
-
-                # Also update the speaker check job if referenced in speech job metadata
-                # Only update if it doesn't already have a conversation_id (first conversation wins)
-                speaker_check_job_id = speech_job.meta.get('speaker_check_job_id')
-                if speaker_check_job_id:
-                    try:
-                        speaker_check_job = Job.fetch(speaker_check_job_id, connection=redis_conn)
-                        if speaker_check_job and speaker_check_job.meta:
-                            # Only update if conversation_id not already set
-                            if not speaker_check_job.meta.get('conversation_id'):
-                                speaker_check_job.meta['conversation_id'] = conversation_id
-                                speaker_check_job.save_meta()
-                                logger.info(f"🔗 Updated speaker check job {speaker_check_job_id} with conversation_id")
-                            else:
-                                logger.info(f"⏭️ Speaker check job {speaker_check_job_id} already linked to conversation {speaker_check_job.meta.get('conversation_id')[:12]}")
-                    except Exception as speaker_err:
-                        logger.warning(f"⚠️ Failed to update speaker check job metadata: {speaker_err}")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to update speech job metadata: {e}")
-
-    # Store conversation_id in Redis for finalize job to find
-    conversation_key = f"conversation:session:{session_id}"
-    await redis_client.set(conversation_key, conversation_id, ex=86400)  # 24 hour TTL
-    logger.info(f"💾 Stored conversation ID in Redis: {conversation_key}")
-
+    # Link job metadata to conversation (cascading updates)
+    current_job.meta["conversation_id"] = conversation_id
+    current_job.save_meta()
+    speech_job = Job.fetch(speech_job_id, connection=redis_conn)
+    speech_job.meta["conversation_id"] = conversation_id
+    speech_job.save_meta()
+    speaker_check_job_id = speech_job.meta.get("speaker_check_job_id")
+    if speaker_check_job_id:
+        speaker_check_job = Job.fetch(speaker_check_job_id, connection=redis_conn)
+        speaker_check_job.meta["conversation_id"] = conversation_id
+        speaker_check_job.save_meta()
+    
     # Signal audio persistence job to rotate to this conversation's file
-    current_conversation_key = f"conversation:current:{session_id}"
-    await redis_client.set(current_conversation_key, conversation_id, ex=86400)  # 24 hour TTL
-    logger.info(f"🔄 Signaled audio persistence to rotate file for conversation {conversation_id[:12]}")
+    rotation_signal_key = f"conversation:current:{session_id}"
+    await redis_client.set(rotation_signal_key, conversation_id, ex=86400)  # 24 hour TTL
+    logger.info(
+        f"🔄 Signaled audio persistence to rotate file for conversation {conversation_id[:12]}"
+    )
 
     # Use redis_client parameter
     aggregator = TranscriptionResultsAggregator(redis_client)
@@ -132,7 +240,6 @@ async def open_conversation_job(
     finalize_received = False
 
     # Inactivity timeout configuration
-    import os
     inactivity_timeout_seconds = float(os.getenv("SPEECH_INACTIVITY_THRESHOLD_SECONDS", "60"))
     inactivity_timeout_minutes = inactivity_timeout_seconds / 60
     last_meaningful_speech_time = time.time()  # Initialize with conversation start
@@ -140,7 +247,9 @@ async def open_conversation_job(
     last_inactivity_log_time = time.time()  # Track when we last logged inactivity
     last_word_count = 0  # Track word count to detect actual new speech
 
-    logger.info(f"📊 Conversation timeout configured: {inactivity_timeout_minutes} minutes ({inactivity_timeout_seconds}s)")
+    logger.info(
+        f"📊 Conversation timeout configured: {inactivity_timeout_minutes} minutes ({inactivity_timeout_seconds}s)"
+    )
 
     while True:
         # Check if session is finalizing (set by producer when recording stops)
@@ -148,7 +257,9 @@ async def open_conversation_job(
             status = await redis_client.hget(session_key, "status")
             if status and status.decode() in ["finalizing", "complete"]:
                 finalize_received = True
-                logger.info(f"🛑 Session finalizing, waiting for audio persistence job to complete...")
+                logger.info(
+                    f"🛑 Session finalizing, waiting for audio persistence job to complete..."
+                )
                 break  # Exit immediately when finalize signal received
 
         # Check max runtime timeout
@@ -161,63 +272,36 @@ async def open_conversation_job(
         current_count = combined["chunk_count"]
 
         # Analyze speech content using detailed analysis
-        from advanced_omi_backend.utils.conversation_utils import analyze_speech
 
-        transcript_data = {
-            "text": combined["text"],
-            "words": combined.get("words", [])
-        }
+
+        transcript_data = {"text": combined["text"], "words": combined.get("words", [])}
         speech_analysis = analyze_speech(transcript_data)
 
         # Extract speaker information from segments
-        speakers = []
         segments = combined.get("segments", [])
-        if segments:
-            for seg in segments:
-                speaker = seg.get("speaker", "Unknown")
-                if speaker and speaker != "Unknown" and speaker not in speakers:
-                    speakers.append(speaker)
+        speakers = extract_speakers_from_segments(segments)
 
-        # Check if NEW speech arrived (word count increased)
-        # Track word count instead of chunk count to avoid resetting on noise/silence chunks
-        current_word_count = speech_analysis.get("word_count", 0)
-        if current_word_count > last_word_count:
-            last_meaningful_speech_time = time.time()
-            last_word_count = current_word_count
-            # Store timestamp in Redis for visibility/debugging
-            await redis_client.set(
-                f"conversation:last_speech:{conversation_id}",
-                last_meaningful_speech_time,
-                ex=86400  # 24 hour TTL
-            )
-            logger.debug(f"🗣️ New speech detected (word count: {current_word_count}), updated last_speech timestamp")
+        # Track new speech activity (word count based)
+        new_speech_time, last_word_count = await track_speech_activity(
+            speech_analysis=speech_analysis,
+            last_word_count=last_word_count,
+            conversation_id=conversation_id,
+            redis_client=redis_client,
+        )
+        if new_speech_time:
+            last_meaningful_speech_time = new_speech_time
 
-        # Update job meta with current state
-        if current_job:
-            if not current_job.meta:
-                current_job.meta = {}
-
-            from datetime import datetime
-
-            # Set created_at only once (first time we update metadata)
-            if 'created_at' not in current_job.meta:
-                current_job.meta['created_at'] = datetime.now().isoformat()
-
-            current_job.meta.update({
-                "conversation_id": conversation_id,
-                "audio_uuid": session_id,  # Link to session for job grouping
-                "client_id": client_id,  # Ensure client_id is always present
-                "transcript": combined["text"][:500] + "..." if len(combined["text"]) > 500 else combined["text"],  # First 500 chars
-                "transcript_length": len(combined["text"]),
-                "speakers": speakers,
-                "word_count": speech_analysis.get("word_count", 0),
-                "duration_seconds": speech_analysis.get("duration", 0),
-                "has_speech": speech_analysis.get("has_speech", False),
-                "last_update": datetime.now().isoformat(),
-                "inactivity_seconds": time.time() - last_meaningful_speech_time,
-                "chunks_processed": current_count
-            })
-            current_job.save_meta()
+        # Update job metadata with current progress
+        await update_job_progress_metadata(
+            current_job=current_job,
+            conversation_id=conversation_id,
+            session_id=session_id,
+            client_id=client_id,
+            combined=combined,
+            speech_analysis=speech_analysis,
+            speakers=speakers,
+            last_meaningful_speech_time=last_meaningful_speech_time,
+        )
 
         # Check inactivity timeout and log every 10 seconds
         inactivity_duration = time.time() - last_meaningful_speech_time
@@ -225,7 +309,9 @@ async def open_conversation_job(
 
         # Log inactivity every 10 seconds
         if current_time - last_inactivity_log_time >= 10:
-            logger.info(f"⏱️ Time since last speech: {inactivity_duration:.1f}s (timeout: {inactivity_timeout_seconds:.0f}s)")
+            logger.info(
+                f"⏱️ Time since last speech: {inactivity_duration:.1f}s (timeout: {inactivity_timeout_seconds:.0f}s)"
+            )
             last_inactivity_log_time = current_time
 
         if inactivity_duration > inactivity_timeout_seconds:
@@ -251,224 +337,120 @@ async def open_conversation_job(
 
         await asyncio.sleep(1)  # Check every second for responsiveness
 
-    logger.info(f"✅ Conversation {conversation_id} updates complete, checking for meaningful speech...")
+    logger.info(
+        f"✅ Conversation {conversation_id} updates complete, checking for meaningful speech..."
+    )
 
     # FINAL VALIDATION: Check if conversation has meaningful speech before post-processing
     # This prevents empty/noise-only conversations from being processed and saved
     combined = await aggregator.get_combined_results(session_id)
-    from advanced_omi_backend.utils.conversation_utils import is_meaningful_speech
+
 
     if not is_meaningful_speech(combined):
-        logger.warning(f"⚠️ Conversation {conversation_id} has no meaningful speech after finalization, marking as deleted...")
+        logger.warning(
+            f"⚠️ Conversation {conversation_id} has no meaningful speech after finalization"
+        )
 
-        # Mark the conversation as deleted instead of removing from database
-        from datetime import datetime
-        conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
-        if conversation:
-            conversation.deleted = True
-            conversation.deletion_reason = "no_meaningful_speech"
-            conversation.deleted_at = datetime.utcnow()
-            await conversation.save()
-            logger.info(f"🗑️ Marked empty conversation {conversation_id} as deleted")
+        # Mark conversation as deleted (soft delete)
+        await mark_conversation_deleted(
+            conversation_id=conversation_id,
+            deletion_reason="no_meaningful_speech",
+        )
 
-        # Clean up Redis tracking keys
-        conversation_key = f"conversation:session:{session_id}"
-        await redis_client.delete(conversation_key)
-        open_job_key = f"open_conversation:session:{session_id}"
-        await redis_client.delete(open_job_key)
-        current_conversation_key = f"conversation:current:{session_id}"
-        await redis_client.delete(current_conversation_key)
+        logger.info("✅ Marked conversation as deleted, session can continue")
 
-        logger.info(f"✅ Marked conversation as deleted, session can continue")
+        # Call shared cleanup/restart logic before returning
+        return await handle_end_of_conversation(
+            session_id=session_id,
+            conversation_id=conversation_id,
+            client_id=client_id,
+            user_id=user_id,
+            start_time=start_time,
+            last_result_count=last_result_count,
+            timeout_triggered=timeout_triggered,
+            redis_client=redis_client,
+        )
 
-        return {
-            "conversation_id": conversation_id,
-            "deleted": True,
-            "reason": "no_meaningful_speech",
-            "final_result_count": last_result_count,
-            "runtime_seconds": time.time() - start_time,
-            "timeout_triggered": timeout_triggered
-        }
-
-    logger.info(f"✅ Conversation has meaningful speech, proceeding with post-processing")
+    logger.info("✅ Conversation has meaningful speech, proceeding with post-processing")
 
     # Wait for audio_streaming_persistence_job to complete and write the file path
-    # Audio persistence now writes files per-conversation, so key uses conversation_id
-    audio_file_key = f"audio:file:{conversation_id}"
-    file_path_bytes = None
-    max_wait_audio = 30  # Maximum 30 seconds to wait for audio file
-    wait_start = time.time()
+    from advanced_omi_backend.utils.conversation_utils import wait_for_audio_file
 
-    while time.time() - wait_start < max_wait_audio:
-        file_path_bytes = await redis_client.get(audio_file_key)
-        if file_path_bytes:
-            wait_duration = time.time() - wait_start
-            logger.info(f"✅ Audio file ready after {wait_duration:.1f}s")
-            break
+    file_path = await wait_for_audio_file(
+        conversation_id=conversation_id, redis_client=redis_client, max_wait_seconds=30
+    )
 
-        # Check if still within reasonable time
-        elapsed = time.time() - wait_start
-        if elapsed % 5 == 0:  # Log every 5 seconds
-            logger.info(f"⏳ Waiting for audio file (conversation {conversation_id[:12]})... ({elapsed:.0f}s elapsed)")
-
-        await asyncio.sleep(0.5)  # Check every 500ms
-
-    if not file_path_bytes:
-        logger.error(f"❌ Audio file path not found in Redis after {max_wait_audio}s (key: {audio_file_key})")
-        logger.warning(f"⚠️ Audio persistence job may not have rotated file yet - cannot enqueue batch transcription")
-
-        # Mark the conversation as deleted - it has speech but no audio file to process
-        from datetime import datetime
-        logger.warning(f"🗑️ Marking incomplete conversation {conversation_id} as deleted - has speech but no audio file")
-        conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
-        if conversation:
-            conversation.deleted = True
-            conversation.deletion_reason = "audio_file_not_ready"
-            conversation.deleted_at = datetime.utcnow()
-            await conversation.save()
-            logger.info(f"✅ Marked incomplete conversation {conversation_id} as deleted")
-
-        # Clean up Redis tracking keys
-        conversation_key = f"conversation:session:{session_id}"
-        await redis_client.delete(conversation_key)
-        open_job_key = f"open_conversation:session:{session_id}"
-        await redis_client.delete(open_job_key)
-        current_conversation_key = f"conversation:current:{session_id}"
-        await redis_client.delete(current_conversation_key)
-
-        return {
-            "conversation_id": conversation_id,
-            "deleted": True,
-            "reason": "audio_file_not_ready",
-            "final_result_count": last_result_count,
-            "runtime_seconds": time.time() - start_time,
-            "timeout_triggered": timeout_triggered
-        }
-    else:
-        file_path = file_path_bytes.decode()
-        logger.info(f"📁 Retrieved audio file path: {file_path}")
-
-        # Update conversation with audio file path
-        conversation = await Conversation.find_one(
-            Conversation.conversation_id == conversation_id
-        )
-        if conversation:
-            # Store just the filename (relative to CHUNK_DIR)
-            from pathlib import Path
-            audio_filename = Path(file_path).name
-            conversation.audio_path = audio_filename
-            await conversation.save()
-            logger.info(f"💾 Updated conversation {conversation_id[:12]} with audio_path: {audio_filename}")
-        else:
-            logger.warning(f"⚠️ Conversation {conversation_id} not found for audio_path update")
-
-        # Enqueue post-conversation processing pipeline
-        from advanced_omi_backend.controllers.queue_controller import start_post_conversation_jobs
-
-        job_ids = start_post_conversation_jobs(
+    if not file_path:
+        # Mark conversation as deleted - has speech but no audio file to process
+        await mark_conversation_deleted(
             conversation_id=conversation_id,
-            audio_uuid=session_id,
-            audio_file_path=file_path,
+            deletion_reason="audio_file_not_ready",
+        )
+
+        # Call shared cleanup/restart logic before returning
+        return await handle_end_of_conversation(
+            session_id=session_id,
+            conversation_id=conversation_id,
+            client_id=client_id,
             user_id=user_id,
-            post_transcription=True  # Run batch transcription for streaming audio
+            start_time=start_time,
+            last_result_count=last_result_count,
+            timeout_triggered=timeout_triggered,
+            redis_client=redis_client,
         )
 
+    logger.info(f"📁 Retrieved audio file path: {file_path}")
+
+    # Update conversation with audio file path
+    conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
+    if conversation:
+        # Store just the filename (relative to CHUNK_DIR)
+        from pathlib import Path
+
+        audio_filename = Path(file_path).name
+        conversation.audio_path = audio_filename
+        await conversation.save()
         logger.info(
-            f"📥 Pipeline: transcribe({job_ids['transcription']}) → "
-            f"speaker({job_ids['speaker_recognition']}) → "
-            f"[memory({job_ids['memory']}) + title({job_ids['title_summary']})]"
+            f"💾 Updated conversation {conversation_id[:12]} with audio_path: {audio_filename}"
         )
-
-        # Wait a moment to ensure jobs are registered in RQ
-        await asyncio.sleep(0.5)
-
-    # Clean up Redis streams to prevent memory leaks
-    try:
-        # NOTE: Do NOT delete audio:stream:{client_id} here!
-        # The audio stream is per-client (WebSocket connection), not per-conversation.
-        # It's still actively receiving audio and will be reused by the next conversation.
-        # Only delete it on WebSocket disconnect (handled in websocket_controller.py)
-
-        # Delete the transcription results stream (per-session/conversation)
-        results_stream_key = f"transcription:results:{session_id}"
-        await redis_client.delete(results_stream_key)
-        logger.info(f"🧹 Deleted results stream: {results_stream_key}")
-
-        # Set TTL on session key (expire after 1 hour)
-        await redis_client.expire(session_key, 3600)
-        logger.info(f"⏰ Set TTL on session key: {session_key}")
-    except Exception as cleanup_error:
-        logger.warning(f"⚠️ Error during stream cleanup: {cleanup_error}")
-
-    # Clean up Redis tracking keys so speech detection job knows conversation is complete
-    open_job_key = f"open_conversation:session:{session_id}"
-    await redis_client.delete(open_job_key)
-    logger.info(f"🧹 Cleaned up tracking key {open_job_key}")
-
-    # Delete the conversation:current signal so audio persistence knows conversation ended
-    current_conversation_key = f"conversation:current:{session_id}"
-    await redis_client.delete(current_conversation_key)
-    logger.info(f"🧹 Deleted conversation:current signal for session {session_id[:12]}")
-
-    # Increment conversation count for this session
-    conversation_count_key = f"session:conversation_count:{session_id}"
-    conversation_count = await redis_client.incr(conversation_count_key)
-    await redis_client.expire(conversation_count_key, 3600)  # 1 hour TTL
-    logger.info(f"📊 Conversation count for session {session_id}: {conversation_count}")
-
-    # Check if session is still active (user still recording) and restart listening jobs
-    session_status = await redis_client.hget(session_key, "status")
-    if session_status:
-        status_str = session_status.decode() if isinstance(session_status, bytes) else session_status
-
-        if status_str == "active":
-            # Session still active - enqueue new speech detection for next conversation
-            logger.info(f"🔄 Enqueueing new speech detection (conversation #{conversation_count + 1})")
-
-            from advanced_omi_backend.controllers.queue_controller import transcription_queue, redis_conn, JOB_RESULT_TTL
-            from advanced_omi_backend.workers.transcription_jobs import stream_speech_detection_job
-
-            # Enqueue speech detection job for next conversation (audio persistence keeps running)
-            speech_job = transcription_queue.enqueue(
-                stream_speech_detection_job,
-                session_id,
-                user_id,
-                client_id,
-                job_timeout=3600,
-                result_ttl=JOB_RESULT_TTL,
-                job_id=f"speech-detect_{session_id[:12]}_{conversation_count}",
-                description=f"Listening for speech (conversation #{conversation_count + 1})",
-                meta={'audio_uuid': session_id, 'client_id': client_id, 'session_level': True}
-            )
-
-            # Store job ID for cleanup (keyed by client_id for WebSocket cleanup)
-            try:
-                redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=3600)
-                logger.info(f"📌 Stored speech detection job ID for client {client_id}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to store job ID for {client_id}: {e}")
-
-            logger.info(f"✅ Enqueued speech detection job {speech_job.id}")
-        else:
-            logger.info(f"Session {session_id} status={status_str}, not restarting (user stopped recording)")
     else:
-        logger.info(f"Session {session_id} not found, not restarting (session ended)")
+        logger.warning(f"⚠️ Conversation {conversation_id} not found for audio_path update")
 
-    return {
-        "conversation_id": conversation_id,
-        "conversation_count": conversation_count,
-        "final_result_count": last_result_count,
-        "runtime_seconds": time.time() - start_time,
-        "timeout_triggered": timeout_triggered
-    }
+    # Enqueue post-conversation processing pipeline
+
+
+    job_ids = start_post_conversation_jobs(
+        conversation_id=conversation_id,
+        audio_uuid=session_id,
+        audio_file_path=file_path,
+        user_id=user_id,
+        post_transcription=True,  # Run batch transcription for streaming audio
+    )
+
+    logger.info(
+        f"📥 Pipeline: transcribe({job_ids['transcription']}) → "
+        f"speaker({job_ids['speaker_recognition']}) → "
+        f"[memory({job_ids['memory']}) + title({job_ids['title_summary']})]"
+    )
+
+    # Wait a moment to ensure jobs are registered in RQ
+    await asyncio.sleep(0.5)
+
+    # Call shared cleanup/restart logic
+    return await handle_end_of_conversation(
+        session_id=session_id,
+        conversation_id=conversation_id,
+        client_id=client_id,
+        user_id=user_id,
+        start_time=start_time,
+        last_result_count=last_result_count,
+        timeout_triggered=timeout_triggered,
+        redis_client=redis_client,
+    )
 
 
 @async_job(redis=True, beanie=True)
-async def generate_title_summary_job(
-    conversation_id: str,
-    *,
-    redis_client=None
-) -> Dict[str, Any]:
+async def generate_title_summary_job(conversation_id: str, *, redis_client=None) -> Dict[str, Any]:
     """
     Generate title, short summary, and detailed summary for a conversation using LLM.
 
@@ -489,7 +471,7 @@ async def generate_title_summary_job(
     from advanced_omi_backend.utils.conversation_utils import (
         generate_title,
         generate_short_summary,
-        generate_detailed_summary
+        generate_detailed_summary,
     )
 
     logger.info(f"📝 Starting title/summary generation for conversation {conversation_id}")
@@ -511,32 +493,30 @@ async def generate_title_summary_job(
         return {
             "success": False,
             "error": "No transcript or segments available",
-            "conversation_id": conversation_id
+            "conversation_id": conversation_id,
         }
 
     # Generate title, short summary, and detailed summary using unified utilities
     try:
-        logger.info(f"🤖 Generating title/summary/detailed_summary using LLM for conversation {conversation_id}")
+        logger.info(
+            f"🤖 Generating title/summary/detailed_summary using LLM for conversation {conversation_id}"
+        )
 
         # Convert segments to dict format expected by utils
         segment_dicts = None
         if segments and len(segments) > 0:
             segment_dicts = [
-                {
-                    "speaker": seg.speaker,
-                    "text": seg.text,
-                    "start": seg.start,
-                    "end": seg.end
-                }
+                {"speaker": seg.speaker, "text": seg.text, "start": seg.start, "end": seg.end}
                 for seg in segments
             ]
 
         # Generate all three summaries in parallel for efficiency
         import asyncio
+
         title, short_summary, detailed_summary = await asyncio.gather(
             generate_title(transcript_text, segments=segment_dicts),
             generate_short_summary(transcript_text, segments=segment_dicts),
-            generate_detailed_summary(transcript_text, segments=segment_dicts)
+            generate_detailed_summary(transcript_text, segments=segment_dicts),
         )
 
         conversation.title = title
@@ -553,7 +533,7 @@ async def generate_title_summary_job(
             "success": False,
             "error": str(gen_error),
             "conversation_id": conversation_id,
-            "processing_time_seconds": time.time() - start_time
+            "processing_time_seconds": time.time() - start_time,
         }
 
     # Save the updated conversation
@@ -563,21 +543,28 @@ async def generate_title_summary_job(
 
     # Update job metadata
     from rq import get_current_job
+
     current_job = get_current_job()
     if current_job:
         if not current_job.meta:
             current_job.meta = {}
-        current_job.meta.update({
-            "conversation_id": conversation_id,
-            "title": conversation.title,
-            "summary": conversation.summary,
-            "detailed_summary_length": len(conversation.detailed_summary) if conversation.detailed_summary else 0,
-            "segment_count": len(segments),
-            "processing_time": processing_time
-        })
+        current_job.meta.update(
+            {
+                "conversation_id": conversation_id,
+                "title": conversation.title,
+                "summary": conversation.summary,
+                "detailed_summary_length": (
+                    len(conversation.detailed_summary) if conversation.detailed_summary else 0
+                ),
+                "segment_count": len(segments),
+                "processing_time": processing_time,
+            }
+        )
         current_job.save_meta()
 
-    logger.info(f"✅ Title/summary generation completed for {conversation_id} in {processing_time:.2f}s")
+    logger.info(
+        f"✅ Title/summary generation completed for {conversation_id} in {processing_time:.2f}s"
+    )
 
     return {
         "success": True,
@@ -585,5 +572,5 @@ async def generate_title_summary_job(
         "title": conversation.title,
         "summary": conversation.summary,
         "detailed_summary": conversation.detailed_summary,
-        "processing_time_seconds": processing_time
+        "processing_time_seconds": processing_time,
     }
