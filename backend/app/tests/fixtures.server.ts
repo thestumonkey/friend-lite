@@ -15,6 +15,7 @@ import { ProcessorResource } from "../lib/processors/core.server.ts";
 import { generateApiKey } from "@/lib/auth/tokens.ts";
 import { accessLogger } from "@/lib/auth/core.server.ts";
 import { fn } from "@std/expect";
+import { ObjectsResource } from "@/lib/objects/resource.server.ts";
 
 export type Fixture = {
   token: any;
@@ -149,9 +150,6 @@ defineFixture({
     const fs = new FsResource();
     const timeline = new TimelineResource();
     const processor = new ProcessorResource();
-    const { ObjectsResource } = await import(
-      "@/lib/objects/resource.server.ts"
-    );
     const objects = new ObjectsResource();
     resource.getRootDB = async () => isolatedDB;
     fs.getRootDB = async () => isolatedDB;

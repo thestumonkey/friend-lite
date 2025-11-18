@@ -49,8 +49,7 @@ export type ProcessorResponse = any;
 export class ProcessorResource
   implements Resource<ProcessorRequest, ProcessorResponse> {
   code = "tech.mycelia.processors";
-  description =
-    "Change stream-based processor management for inline document processing";
+  description = "Processor management";
   schemas = {
     request: processorRequestSchema as z.ZodType<ProcessorRequest>,
     response: z.any(),

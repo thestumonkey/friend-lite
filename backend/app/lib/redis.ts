@@ -133,7 +133,7 @@ const xtrimSchema = z.object({
   limit: z.number().optional(),
 });
 
-const redisRequestSchema = z.discriminatedUnion("action", [
+const singleOperationSchema = z.discriminatedUnion("action", [
   setSchema,
   getSchema,
   delSchema,
@@ -151,12 +151,36 @@ const redisRequestSchema = z.discriminatedUnion("action", [
   xtrimSchema,
 ]);
 
+const pipelineSchema = z.object({
+  action: z.literal("pipeline"),
+  operations: z.array(singleOperationSchema),
+});
+
+const redisRequestSchema = z.discriminatedUnion("action", [
+  setSchema,
+  getSchema,
+  delSchema,
+  hsetSchema,
+  hgetSchema,
+  hgetallSchema,
+  xaddSchema,
+  xreadSchema,
+  xreadgroupSchema,
+  xgroupSchema,
+  xackSchema,
+  xdelSchema,
+  xrangeSchema,
+  xlenSchema,
+  xtrimSchema,
+  pipelineSchema,
+]);
+
 type RedisRequest = z.infer<typeof redisRequestSchema>;
 type RedisResponse = any;
 
 export class RedisResource implements Resource<RedisRequest, RedisResponse> {
   code = "tech.mycelia.redis";
-  description = "Redis caching operations";
+  description = "Redis operations";
   schemas: {
     request: z.ZodType<RedisRequest>;
     response: z.ZodType<RedisResponse>;
@@ -165,121 +189,168 @@ export class RedisResource implements Resource<RedisRequest, RedisResponse> {
     response: z.any() as z.ZodType<RedisResponse>,
   };
 
-  async use(input: RedisRequest): Promise<RedisResponse> {
-    switch (input.action) {
+  private executeOperation(
+    executor: any,
+    operation: z.infer<typeof singleOperationSchema>,
+    isPipeline: boolean,
+  ): any {
+    switch (operation.action) {
       case "set":
-        return redis.set(input.key, input.value, "EX", input.ttlSeconds);
+        return executor.set(operation.key, operation.value, "EX", operation.ttlSeconds);
       case "get":
-        return redis.get(input.key);
+        return executor.get(operation.key);
       case "del":
-        return redis.del(...input.keys);
+        return executor.del(...operation.keys);
       case "hset":
-        return await redis.pipeline()
-          .hset(input.key, input.field, input.value)
-          .expire(input.key, input.ttlSeconds)
-          .exec();
+        executor.hset(operation.key, operation.field, operation.value);
+        return executor.expire(operation.key, operation.ttlSeconds);
       case "hget":
-        return redis.hget(input.key, input.field);
+        return executor.hget(operation.key, operation.field);
       case "hgetall":
-        return redis.hgetall(input.key);
+        return executor.hgetall(operation.key);
       case "xadd": {
         const fieldsArray: string[] = [];
-        for (const [key, value] of Object.entries(input.fields)) {
+        for (const [key, value] of Object.entries(operation.fields)) {
           fieldsArray.push(key, value);
         }
-        const args = input.id
-          ? [input.key, input.id, ...fieldsArray]
-          : [input.key, "*", ...fieldsArray];
-        return redis.xadd(...(args as [string, string, ...string[]]));
+        const args = operation.id
+          ? [operation.key, operation.id, ...fieldsArray]
+          : [operation.key, "*", ...fieldsArray];
+        return executor.xadd(...(args as [string, string, ...string[]]));
       }
+      case "xack":
+        return executor.xack(
+          operation.key,
+          operation.group,
+          ...(operation.ids as [string, ...string[]]),
+        );
+      case "xdel":
+        return executor.xdel(operation.key, ...(operation.ids as [string, ...string[]]));
+      case "xlen":
+        return executor.xlen(operation.key);
       case "xread": {
+        if (isPipeline) {
+          throw new Error("xread is not supported in pipeline");
+        }
         const args: any[] = [];
-        if (input.count !== undefined) {
-          args.push("COUNT", input.count);
+        if (operation.count !== undefined) {
+          args.push("COUNT", operation.count);
         }
-        if (input.block !== undefined) {
-          args.push("BLOCK", input.block);
+        if (operation.block !== undefined) {
+          args.push("BLOCK", operation.block);
         }
-        args.push("STREAMS", ...input.streams, ...input.ids);
-        return (redis.xread as any).apply(redis, args);
+        args.push("STREAMS", ...operation.streams, ...operation.ids);
+        return (executor.xread as any).apply(executor, args);
       }
       case "xreadgroup": {
-        const args: any[] = ["GROUP", input.group, input.consumer];
-        if (input.count !== undefined) {
-          args.push("COUNT", input.count);
+        if (isPipeline) {
+          throw new Error("xreadgroup is not supported in pipeline");
         }
-        if (input.block !== undefined) {
-          args.push("BLOCK", input.block);
+        const args: any[] = ["GROUP", operation.group, operation.consumer];
+        if (operation.count !== undefined) {
+          args.push("COUNT", operation.count);
         }
-        if (input.noack) {
+        if (operation.block !== undefined) {
+          args.push("BLOCK", operation.block);
+        }
+        if (operation.noack) {
           args.push("NOACK");
         }
-        args.push("STREAMS", ...input.streams, ...input.ids);
-        return (redis.xreadgroup as any).apply(redis, args);
+        args.push("STREAMS", ...operation.streams, ...operation.ids);
+        return (executor.xreadgroup as any).apply(executor, args);
       }
       case "xgroup": {
-        const args: any[] = [input.operation, input.key, input.group];
-        if (input.operation === "CREATE" || input.operation === "SETID") {
-          if (input.id) {
-            args.push(input.id);
-          } else if (input.operation === "CREATE") {
+        if (isPipeline) {
+          throw new Error("xgroup is not supported in pipeline");
+        }
+        const args: any[] = [operation.operation, operation.key, operation.group];
+        if (operation.operation === "CREATE" || operation.operation === "SETID") {
+          if (operation.id) {
+            args.push(operation.id);
+          } else if (operation.operation === "CREATE") {
             args.push("$");
           }
-          if (input.mkstream && input.operation === "CREATE") {
+          if (operation.mkstream && operation.operation === "CREATE") {
             args.push("MKSTREAM");
           }
         } else if (
-          input.operation === "CREATECONSUMER" ||
-          input.operation === "DELCONSUMER"
+          operation.operation === "CREATECONSUMER" ||
+          operation.operation === "DELCONSUMER"
         ) {
-          if (input.consumer) {
-            args.push(input.consumer);
+          if (operation.consumer) {
+            args.push(operation.consumer);
           }
         }
-        return (redis.xgroup as any).apply(redis, args);
+        return (executor.xgroup as any).apply(executor, args);
       }
-      case "xack":
-        return redis.xack(
-          input.key,
-          input.group,
-          ...(input.ids as [string, ...string[]]),
-        );
-      case "xdel":
-        return redis.xdel(input.key, ...(input.ids as [string, ...string[]]));
       case "xrange": {
-        const args: any[] = [];
-        if (input.count !== undefined) {
-          args.push("COUNT", input.count);
+        if (isPipeline) {
+          throw new Error("xrange is not supported in pipeline");
         }
-        return redis.xrange(input.key, input.start, input.end, ...args);
+        const args: any[] = [];
+        if (operation.count !== undefined) {
+          args.push("COUNT", operation.count);
+        }
+        return executor.xrange(operation.key, operation.start, operation.end, ...args);
       }
       case "xrevrange": {
-        const args: any[] = [];
-        if (input.count !== undefined) {
-          args.push("COUNT", input.count);
+        if (isPipeline) {
+          throw new Error("xrevrange is not supported in pipeline");
         }
-        return redis.xrevrange(input.key, input.start, input.end, ...args);
-      }
-      case "xlen":
-        return redis.xlen(input.key);
-      case "xtrim": {
         const args: any[] = [];
-        if (input.approximate) {
+        if (operation.count !== undefined) {
+          args.push("COUNT", operation.count);
+        }
+        return executor.xrevrange(operation.key, operation.start, operation.end, ...args);
+      }
+      case "xtrim": {
+        if (isPipeline) {
+          throw new Error("xtrim is not supported in pipeline");
+        }
+        const args: any[] = [];
+        if (operation.approximate) {
           args.push("~");
         }
-        args.push(input.threshold);
-        if (input.limit !== undefined) {
-          args.push("LIMIT", input.limit);
+        args.push(operation.threshold);
+        if (operation.limit !== undefined) {
+          args.push("LIMIT", operation.limit);
         }
-        // @ts-expect-error - spread argument with dynamic args array
-        return redis.xtrim(input.key, ...args);
+        return executor.xtrim(operation.key, ...args);
       }
       default:
-        throw new Error("Unknown action");
+        throw new Error(`Unknown action: ${(operation as any).action}`);
     }
   }
 
-  extractActions(input: RedisRequest) {
+  private addOperationToPipeline(pipeline: any, operation: z.infer<typeof singleOperationSchema>) {
+    this.executeOperation(pipeline, operation, true);
+  }
+
+  async use(input: RedisRequest): Promise<RedisResponse> {
+    if (input.action === "pipeline") {
+      const pipeline = redis.pipeline();
+      for (const operation of input.operations) {
+        this.addOperationToPipeline(pipeline, operation);
+      }
+      return pipeline.exec();
+    }
+
+    // hset requires a pipeline for atomicity (hset + expire)
+    if (input.action === "hset") {
+      return await redis.pipeline()
+        .hset(input.key, input.field, input.value)
+        .expire(input.key, input.ttlSeconds)
+        .exec();
+    }
+
+    return this.executeOperation(redis, input, false);
+  }
+
+  extractActions(input: RedisRequest): { path: string[]; actions: string[] }[] {
+    if (input.action === "pipeline") {
+      return input.operations.flatMap((operation: RedisRequest) => this.extractActions(operation));
+    }
+
     let keys: string[];
 
     if (input.action === "del") {

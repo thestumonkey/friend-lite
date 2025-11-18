@@ -8,6 +8,12 @@ import { apiFilesUploadHandler } from "@/routes/api.files.upload.ts";
 import { mcpGetHandler, mcpPostHandler } from "@/routes/mcp.ts";
 import { llmChatCompletionsHandler } from "@/routes/llm.chat.completions.ts";
 import { oauthTokenHandler } from "@/routes/oauth.token.ts";
+import { oauthRegisterHandler } from "@/routes/oauth.register.ts";
+import {
+  oauthAuthorizeHandler,
+  oauthConsentDetailsHandler,
+  oauthConsentHandler,
+} from "@/routes/oauth.authorize.ts";
 import { authJwtLoginHandler } from "@/routes/auth.jwt.login.ts";
 import { wellKnownOauthAuthorizationServerHandler } from "@/routes/[.]well-known.oauth-authorization-server.ts";
 import { wellKnownOauthProtectedResourceHandler } from "@/routes/[.]well-known.oauth-protected-resource.ts";
@@ -24,7 +30,11 @@ export function registerRoutes(app: Express): void {
   app.get("/mcp", mcpGetHandler);
   app.post("/mcp", mcpPostHandler);
   app.post("/llm/chat/completions", llmChatCompletionsHandler);
+  app.get("/oauth/authorize", oauthAuthorizeHandler);
+  app.get("/oauth/consent/details", oauthConsentDetailsHandler);
+  app.post("/oauth/consent", oauthConsentHandler);
   app.post("/oauth/token", oauthTokenHandler);
+  app.post("/oauth/register", oauthRegisterHandler);
   app.post("/auth/jwt/login", authJwtLoginHandler);
   app.get(
     "/.well-known/oauth-authorization-server",

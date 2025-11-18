@@ -19,8 +19,13 @@ import ObjectHistoryPage from "./pages/ObjectHistoryPage";
 import CreateObjectPage from "./pages/CreateObjectPage";
 import CreateAudioRecordPage from "./pages/CreateAudioRecordPage";
 import AudioPlayerPage from "./pages/AudioPlayerPage";
+import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 export const router = createBrowserRouter([
+  {
+    path: "/oauth/consent",
+    element: <OAuthConsentPage />,
+  },
   {
     path: "/",
     element: <Layout />,

@@ -87,9 +87,15 @@ export function oauthErrorJson(
 
 export const authorizationServerMetadataSchema = z.object({
   issuer: z.string().url(),
+  authorization_endpoint: z.string().url(),
   token_endpoint: z.string().url(),
-  registration_endpoint: z.string().url().optional(),
-  grant_types_supported: z.array(z.literal("client_credentials")),
+  registration_endpoint: z.string().url(),
+  grant_types_supported: z.array(
+    z.union([
+      z.literal("client_credentials"),
+      z.literal("authorization_code"),
+    ]),
+  ),
   token_endpoint_auth_methods_supported: z.array(
     z.union([
       z.literal("client_secret_basic"),
@@ -98,6 +104,7 @@ export const authorizationServerMetadataSchema = z.object({
   ),
   response_types_supported: z.array(z.string()),
   scopes_supported: z.array(z.string()),
+  code_challenge_methods_supported: z.array(z.string()).optional(),
 });
 
 export type AuthorizationServerMetadata = z.infer<
@@ -109,14 +116,17 @@ export function buildAuthorizationServerMetadata(
 ): AuthorizationServerMetadata {
   return {
     issuer: origin,
+    authorization_endpoint: `${origin}/oauth/authorize`,
     token_endpoint: `${origin}/oauth/token`,
-    grant_types_supported: ["client_credentials"],
+    registration_endpoint: `${origin}/oauth/register`,
+    grant_types_supported: ["client_credentials", "authorization_code"],
     token_endpoint_auth_methods_supported: [
       "client_secret_basic",
       "client_secret_post",
     ],
-    response_types_supported: [],
+    response_types_supported: ["code"],
     scopes_supported: ["*"],
+    code_challenge_methods_supported: ["S256", "plain"],
   };
 }
 

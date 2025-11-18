@@ -19,6 +19,7 @@ const apiKeySchema = z.object({
   openPrefix: z.string(),
   createdAt: z.date(),
   isActive: z.boolean(),
+  redirectUris: z.array(z.string()).optional(),
 });
 
 type APIKeyDocument = z.infer<typeof apiKeySchema>;
@@ -32,6 +33,16 @@ export async function generateApiKey(
   name: string,
   policies: Policy[],
 ): Promise<string> {
+  const result = await generateApiKeyWithId(owner, name, policies);
+  return result.apiKey;
+}
+
+export async function generateApiKeyWithId(
+  owner: string,
+  name: string,
+  policies: Policy[],
+  redirectUris?: string[],
+): Promise<{ apiKey: string; clientId: string }> {
   const apiKey = `mycelia_${randomBytes(32).toString("base64url")}`;
   const salt = randomBytes(32);
   const hashedKey = hashApiKey(apiKey, salt);
@@ -48,6 +59,7 @@ export async function generateApiKey(
     openPrefix: apiKey.slice(0, OPEN_PREFIX_LENGTH),
     createdAt: new Date(),
     isActive: true,
+    ...(redirectUris && { redirectUris }),
   };
 
   const result = await mongo({
@@ -58,7 +70,7 @@ export async function generateApiKey(
   const clientId = result.insertedId.toString();
   console.log(`MYCELIA_CLIENT_ID=${clientId}`);
 
-  return apiKey;
+  return { apiKey, clientId };
 }
 
 export async function verifyApiKey(apiKey: string): Promise<APIKey | null> {
@@ -164,6 +176,24 @@ export async function revokeApiKey(
     collection: "api_keys",
     query: { _id: new ObjectId(id), owner },
     update: { $set: { isActive: false } },
+  });
+
+  return Boolean(result && (result.modifiedCount || result.matchedCount));
+}
+
+export async function updateApiKeyPolicies(
+  owner: string,
+  id: string,
+  policies: Policy[],
+): Promise<boolean> {
+  const auth = await getServerAuth();
+  const mongo = await getMongoResource(auth);
+
+  const result = await mongo({
+    action: "updateOne",
+    collection: "api_keys",
+    query: { _id: new ObjectId(id), owner },
+    update: { $set: { policies } },
   });
 
   return Boolean(result && (result.modifiedCount || result.matchedCount));

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Key, Plus, Trash2, Copy, Check } from "lucide-react";
+import { Key, Plus, Trash2, Copy, Check, Edit2, Save, X } from "lucide-react";
 import { ObjectId } from "bson";
 
 interface ApiKey {
@@ -32,6 +32,9 @@ const APIKeysPage = () => {
   const [creating, setCreating] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
+  const [editedPolicies, setEditedPolicies] = useState<string>("");
+  const [updating, setUpdating] = useState(false);
 
   const fetchApiKeys = async () => {
     try {
@@ -95,6 +98,39 @@ const APIKeysPage = () => {
       await fetchApiKeys();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke API key");
+    }
+  };
+
+  const handleStartEdit = (key: ApiKey) => {
+    setEditingKeyId(key._id.toString());
+    setEditedPolicies(key.policiesYaml);
+    setError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingKeyId(null);
+    setEditedPolicies("");
+    setError(null);
+  };
+
+  const handleUpdate = async (id: string, owner: string) => {
+    setUpdating(true);
+    setError(null);
+
+    try {
+      await callResource("tech.mycelia.apikeys", {
+        action: "update",
+        id,
+        owner,
+        policiesYaml: editedPolicies,
+      });
+      setEditingKeyId(null);
+      setEditedPolicies("");
+      await fetchApiKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update API key policies");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -297,14 +333,61 @@ const APIKeysPage = () => {
                     )}
                   </div>
 
-                  <details className="space-y-2">
-                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-                      View Policies
-                    </summary>
-                    <pre className="mt-2 p-3 bg-muted rounded-md text-xs font-mono overflow-x-auto">
-                      {key.policiesYaml}
-                    </pre>
-                  </details>
+                  <div className="space-y-2">
+                    <details open={editingKeyId === key._id.toString()}>
+                      <div className="flex items-center justify-between">
+                        <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                          {editingKeyId === key._id.toString() ? "Edit Policies" : "View Policies"}
+                        </summary>
+                        {key.isActive && editingKeyId !== key._id.toString() && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStartEdit(key)}
+                            title="Edit policies"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                      {editingKeyId === key._id.toString() ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={editedPolicies}
+                            onChange={(e) => setEditedPolicies(e.target.value)}
+                            className="flex min-h-[200px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            placeholder={defaultPolicyYaml}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Edit access policies in YAML format.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdate(key._id.toString(), key.owner)}
+                              disabled={updating}
+                            >
+                              <Save className="w-4 h-4 mr-2" />
+                              {updating ? "Saving..." : "Save"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCancelEdit}
+                              disabled={updating}
+                            >
+                              <X className="w-4 h-4 mr-2" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <pre className="mt-2 p-3 bg-muted rounded-md text-xs font-mono overflow-x-auto">
+                          {key.policiesYaml}
+                        </pre>
+                      )}
+                    </details>
+                  </div>
                 </div>
               </Card>
             ))}

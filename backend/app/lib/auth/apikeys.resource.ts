@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { ObjectId } from "bson";
-import { Resource } from "@/lib/auth/resources.ts";
+import { Resource, defaultResourceManager } from "@/lib/auth/resources.ts";
 import { type Auth } from "@/lib/auth/core.server.ts";
-import { generateApiKey, listApiKeys, revokeApiKey } from "./tokens.ts";
-import { parse as parseYaml, stringify as stringifyYaml } from "jsr:@std/yaml";
+import { generateApiKey, listApiKeys, revokeApiKey, updateApiKeyPolicies } from "./tokens.ts";
+import { parse as parseYaml, stringify as stringifyYaml } from "jsr:@std/yaml@1.0.10";
 import type { Policy } from "./resources.ts";
 
 const listApiKeysSchema = z.object({
@@ -23,10 +23,18 @@ const revokeApiKeySchema = z.object({
   owner: z.string(),
 });
 
+const updateApiKeySchema = z.object({
+  action: z.literal("update"),
+  id: z.string(),
+  owner: z.string(),
+  policiesYaml: z.string(),
+});
+
 const apiKeysRequestSchema = z.discriminatedUnion("action", [
   listApiKeysSchema,
   createApiKeySchema,
   revokeApiKeySchema,
+  updateApiKeySchema,
 ]);
 
 export type ApiKeysRequest = z.infer<typeof apiKeysRequestSchema>;
@@ -35,7 +43,7 @@ export type ApiKeysResponse = any;
 export class ApiKeysResource
   implements Resource<ApiKeysRequest, ApiKeysResponse> {
   code = "tech.mycelia.apikeys";
-  description = "API key management operations";
+  description = "API key management";
   schemas = {
     request: apiKeysRequestSchema as z.ZodType<ApiKeysRequest>,
     response: z.any(),
@@ -98,12 +106,35 @@ export class ApiKeysResource
       };
     }
 
+    if (input.action === "update") {
+      let policies: Policy[];
+      try {
+        const parsed = parseYaml(input.policiesYaml);
+        policies = Array.isArray(parsed) ? parsed as Policy[] : [];
+      } catch (error) {
+        throw new Error(
+          `Invalid YAML: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+
+      const success = await updateApiKeyPolicies(
+        input.owner,
+        input.id,
+        policies,
+      );
+      return {
+        success,
+        message: success
+          ? "API key policies updated successfully"
+          : "Failed to update API key policies",
+      };
+    }
+
     throw new Error("Invalid action");
   }
 }
 
 export async function getApiKeysResource(auth: Auth) {
-  const { defaultResourceManager } = await import("@/lib/auth/resources.ts");
   return defaultResourceManager.getResource<ApiKeysRequest, ApiKeysResponse>(
     new ApiKeysResource().code,
     auth,

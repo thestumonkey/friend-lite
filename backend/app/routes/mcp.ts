@@ -36,7 +36,7 @@ export async function mcpPostHandler(req: Request, res: Response) {
   const protocolVersion = req.headers["mcp-protocol-version"] as
     | string
     | undefined;
-  const validVersion = validateProtocolVersion(protocolVersion, config);
+  const validVersion = validateProtocolVersion(protocolVersion || null, config);
   if (!validVersion) {
     res.status(400).json({
       error: "Bad Request: Invalid or unsupported protocol version",
@@ -106,9 +106,16 @@ export async function mcpPostHandler(req: Request, res: Response) {
 
     console.error("MCP call failed:", error);
 
-    if (error instanceof Response) {
-      const responseBody = await error.json();
-      res.status(error.status).json(responseBody);
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      "json" in error &&
+      typeof error.json === "function"
+    ) {
+      const response = error as Response;
+      const responseBody = await response.json();
+      res.status(response.status).json(responseBody);
       return;
     }
 

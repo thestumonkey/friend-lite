@@ -6,6 +6,9 @@ import {
   JSONRPCNotification,
   JSONRPCRequest,
   JSONRPCResponse,
+  Resource as MCPResource,
+  Prompt,
+  GetPromptResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createMCPToolsFromResources } from "./adapter.ts";
 import { EJSON } from "bson";
@@ -47,8 +50,12 @@ export function createInitializeResult() {
     capabilities: {
       logging: {},
       tools: {},
-      resources: {},
+      resources: {
+        subscribe: false,
+        listChanged: false,
+      },
       prompts: {},
+      sampling: {},
     },
     serverInfo: {
       name: "mycelia",

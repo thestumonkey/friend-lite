@@ -61,8 +61,7 @@ type TimelineResponse = any;
 export class TimelineResource
   implements Resource<TimelineRequest, TimelineResponse> {
   code = "tech.mycelia.timeline";
-  description =
-    "Timeline management operations for recalculating histograms, ensuring proper indexing, and invalidating cached histogram data";
+  description = "Timeline management";
   schemas = {
     request: timelineRequestSchema,
     response: z.any(),
