@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateTimePicker } from "@/components/ui/datetime-picker";
+import { useAudioPlayer } from "@/modules/audio/player";
 
 interface TranscriptSegment {
   start: number; // seconds from transcript start
@@ -45,6 +46,7 @@ const TranscriptPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { timeFormat } = useSettingsStore();
+  const { resetDate, setIsPlaying } = useAudioPlayer();
 
   const startParam = searchParams.get("start");
   const endParam = searchParams.get("end");
@@ -317,6 +319,11 @@ const TranscriptPage = () => {
     handleApplyRange();
   }
 
+  function handlePlayFromSegment(segmentTime: Date) {
+    resetDate(segmentTime);
+    setIsPlaying(true);
+  }
+
   useEffect(() => {
     const initialFetch = async () => {
       if (!startDate || !endDate) return;
@@ -489,8 +496,23 @@ const TranscriptPage = () => {
                   return (
                     <div key={idx} className="relative p-4">
                       {gapBadge}
-                      <div className="text-xs text-muted-foreground mb-1">
-                        {formatTime(seg.time, timeFormat)}
+                      <div className="flex items-center gap-2 mb-1">
+                        <button
+                          onClick={() => handlePlayFromSegment(seg.time)}
+                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          title="Play from here"
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="currentColor"
+                            viewBox="0 0 16 16"
+                          >
+                            <path d="M3 2v12l10-6L3 2z" />
+                          </svg>
+                        </button>
+                        <div className="text-xs text-muted-foreground">
+                          {formatTime(seg.time, timeFormat)}
+                        </div>
                       </div>
                       <div className="whitespace-pre-wrap leading-relaxed">
                         {lastSearchedQ
