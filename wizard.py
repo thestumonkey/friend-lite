@@ -158,7 +158,7 @@ def run_service_setup(service_name, selected_services, https_enabled=False, serv
         # For advanced backend, pass URLs of other selected services and HTTPS config
         cmd = service['cmd'].copy()
         if 'speaker-recognition' in selected_services:
-            cmd.extend(['--speaker-service-url', 'http://127.0.0.1:8085'])
+            cmd.extend(['--speaker-service-url', 'http://speaker-service:8085'])
         if 'asr-services' in selected_services:
             cmd.extend(['--parakeet-asr-url', 'http://host.docker.internal:8767'])
         
