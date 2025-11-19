@@ -35,11 +35,13 @@ type PlacedObjectRange = {
   startX: number;
   endX: number;
   lane: number;
+  startOffScreen: boolean;
+  endOffScreen: boolean;
 } & ExtractedObjectRange;
 
-function RangeBox({ range }: { range: PlacedObjectRange }) {
+function RangeBox({ range, width }: { range: PlacedObjectRange; width: number }) {
   const navigate = useNavigate();
-  const { start, end, startX, endX, lane, object } = range;
+  const { start, end, startX, endX, lane, object, startOffScreen, endOffScreen } = range;
   const { timeFormat } = useSettingsStore();
   const now = useNow();
   const { toggleSelection, isSelected } = useObjectSelectionStore();
@@ -69,27 +71,73 @@ function RangeBox({ range }: { range: PlacedObjectRange }) {
   const hasRelationshipData = object.relationship && object.subjectObject &&
     object.objectObject;
 
+  const rangeWidth = endX - startX;
+  const height = laneHeight - 2;
+  const x = startX;
+  const y = topMargin + lane * laneHeight;
+  const cornerRadius = 4;
+  const chevronOffset = 8;
+  const actualEndX = endOffScreen ? width : endX;
+
+  let pathData: string;
+  if (startOffScreen && endOffScreen) {
+    pathData = `M ${x + chevronOffset} ${y}
+       L ${x + chevronOffset / 2} ${y + height / 2}
+       L ${x + chevronOffset} ${y + height}
+       L ${actualEndX - chevronOffset} ${y + height}
+       L ${actualEndX - chevronOffset / 2} ${y + height / 2}
+       L ${actualEndX - chevronOffset} ${y}
+       L ${x + chevronOffset} ${y}
+       Z`;
+  } else if (startOffScreen) {
+    pathData = `M ${x + chevronOffset} ${y}
+       L ${x + chevronOffset / 2} ${y + height / 2}
+       L ${x + chevronOffset} ${y + height}
+       L ${actualEndX - cornerRadius} ${y + height}
+       Q ${actualEndX} ${y + height} ${actualEndX} ${y + height - cornerRadius}
+       L ${actualEndX} ${y + cornerRadius}
+       Q ${actualEndX} ${y} ${actualEndX - cornerRadius} ${y}
+       L ${x + chevronOffset} ${y}
+       Z`;
+  } else if (endOffScreen) {
+    pathData = `M ${x + cornerRadius} ${y}
+       L ${actualEndX - chevronOffset} ${y}
+       L ${actualEndX - chevronOffset / 2} ${y + height / 2}
+       L ${actualEndX - chevronOffset} ${y + height}
+       L ${x + cornerRadius} ${y + height}
+       Q ${x} ${y + height} ${x} ${y + height - cornerRadius}
+       L ${x} ${y + cornerRadius}
+       Q ${x} ${y} ${x + cornerRadius} ${y}
+       Z`;
+  } else {
+    pathData = `M ${x + cornerRadius} ${y}
+       L ${actualEndX - cornerRadius} ${y}
+       Q ${actualEndX} ${y} ${actualEndX} ${y + cornerRadius}
+       L ${actualEndX} ${y + height - cornerRadius}
+       Q ${actualEndX} ${y + height} ${actualEndX - cornerRadius} ${y + height}
+       L ${x + cornerRadius} ${y + height}
+       Q ${x} ${y + height} ${x} ${y + height - cornerRadius}
+       L ${x} ${y + cornerRadius}
+       Q ${x} ${y} ${x + cornerRadius} ${y}
+       Z`;
+  }
+
   return (
     <g
       style={{ cursor: "pointer" }}
       onClick={handleClick}
     >
-      {/* Background rectangle */}
-      <rect
-        width={endX - startX}
-        height={laneHeight - 2}
+      {/* Background path */}
+      <path
+        d={pathData}
         fill={object.color as string || "#6b7280"}
-        x={startX}
-        y={topMargin + lane * laneHeight}
-        rx="4"
-        ry="4"
         stroke={selected ? "#2563eb" : "none"}
         strokeWidth={selected ? 3 : 0}
       />
 
       {/* Content container */}
       <foreignObject
-        width={endX - startX}
+        width={rangeWidth}
         height={laneHeight - 2}
         x={startX}
         y={topMargin + lane * laneHeight}
@@ -171,6 +219,7 @@ function flattenObjectsToRanges(objects: Object[]): ExtractedObjectRange[] {
 function useLaneLayout(
   ranges: ExtractedObjectRange[],
   xFor: (d: Date) => number,
+  width: number,
 ) {
   const now = useNow(100);
 
@@ -179,8 +228,9 @@ function useLaneLayout(
     const regularRanges: ExtractedObjectRange[] = [];
 
     for (const range of ranges) {
-      const startX = xFor(range.start);
+      const originalStartX = xFor(range.start);
       const endX = xFor(range.end ?? now);
+      const startX = originalStartX < 0 ? 0 : originalStartX;
 
       if (endX - startX < 0.5) continue;
 
@@ -203,8 +253,12 @@ function useLaneLayout(
     const placed: PlacedObjectRange[] = [];
 
     for (const range of sortedRegular) {
-      const startX = xFor(range.start);
-      const endX = xFor(range.end ?? now);
+      const originalStartX = xFor(range.start);
+      const originalEndX = xFor(range.end ?? now);
+      const startOffScreen = originalStartX < 0;
+      const endOffScreen = originalEndX > width;
+      const startX = startOffScreen ? 0 : originalStartX;
+      const endX = endOffScreen ? width : originalEndX;
 
       let lane = 0;
       while (lane < regularLaneEnds.length && regularLaneEnds[lane] > startX) {
@@ -218,6 +272,8 @@ function useLaneLayout(
         startX,
         endX,
         lane,
+        startOffScreen,
+        endOffScreen,
         ...range,
       });
     }
@@ -225,8 +281,12 @@ function useLaneLayout(
     const regularLaneCount = regularLaneEnds.length;
 
     for (const range of sortedConversations) {
-      const startX = xFor(range.start);
-      const endX = xFor(range.end ?? now);
+      const originalStartX = xFor(range.start);
+      const originalEndX = xFor(range.end ?? now);
+      const startOffScreen = originalStartX < 0;
+      const endOffScreen = originalEndX > width;
+      const startX = startOffScreen ? 0 : originalStartX;
+      const endX = endOffScreen ? width : originalEndX;
 
       let lane = 0;
       while (
@@ -241,12 +301,14 @@ function useLaneLayout(
         startX,
         endX,
         lane: lane + regularLaneCount,
+        startOffScreen,
+        endOffScreen,
         ...range,
       });
     }
 
     return { placed, lanes: regularLaneCount + conversationLaneEnds.length };
-  }, [ranges, xFor, now]);
+  }, [ranges, xFor, width, now]);
 }
 
 const renderIcon = (icon: any) => {
@@ -269,13 +331,16 @@ export const ObjectsLayer: () => Layer = () => {
       }, [scale, transform]);
 
       const visibleItems = useMemo(() => {
-        return ranges.filter((range) =>
-          range.start < end &&
-          (range.end ?? range.start) > start
-        );
+        return ranges.filter((range) => {
+          if (range.end) {
+            return range.start < end && range.end > start;
+          } else {
+            return range.start < end;
+          }
+        });
       }, [ranges, start, end]);
 
-      const layout = useLaneLayout(visibleItems, xFor);
+      const layout = useLaneLayout(visibleItems, xFor, width);
 
       const height = topMargin + layout.lanes * laneHeight + 10;
 
@@ -286,6 +351,7 @@ export const ObjectsLayer: () => Layer = () => {
               <RangeBox
                 key={`${range.object._id.toString()}-${range.rangeIndex}`}
                 range={range}
+                width={width}
               />
             ),
           )}
