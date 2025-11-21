@@ -30,20 +30,6 @@ async def get_auth_config():
     return await system_controller.get_auth_config()
 
 
-@router.get("/processor/tasks")
-async def get_all_processing_tasks(current_user: User = Depends(current_superuser)):
-    """Get all active processing tasks. Admin only."""
-    return await system_controller.get_all_processing_tasks()
-
-
-@router.get("/processor/tasks/{client_id}")
-async def get_processing_task_status(
-    client_id: str, current_user: User = Depends(current_superuser)
-):
-    """Get processing task status for a specific client. Admin only."""
-    return await system_controller.get_processing_task_status(client_id)
-
-
 @router.get("/processor/status")
 async def get_processor_status(current_user: User = Depends(current_superuser)):
     """Get processor queue status and health. Admin only."""

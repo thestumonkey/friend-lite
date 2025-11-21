@@ -20,6 +20,7 @@ async def check_enrolled_speakers_job(
     session_id: str,
     user_id: str,
     client_id: str,
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -106,6 +107,7 @@ async def recognise_speakers_job(
     audio_path: str,
     transcript_text: str,
     words: list,
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -219,18 +221,30 @@ async def recognise_speakers_job(
         logger.info(f"🎤 Speaker recognition returned {len(speaker_segments)} segments")
 
         # Update the transcript version segments with identified speakers
+        # Filter out empty segments (diarization sometimes creates segments with no text)
         updated_segments = []
+        empty_segment_count = 0
         for seg in speaker_segments:
+            segment_text = seg.get("text", "").strip()
+
+            # Skip segments with no text
+            if not segment_text:
+                empty_segment_count += 1
+                continue
+
             speaker_name = seg.get("identified_as") or seg.get("speaker", "Unknown")
             updated_segments.append(
                 Conversation.SpeakerSegment(
                     start=seg.get("start", 0),
                     end=seg.get("end", 0),
-                    text=seg.get("text", ""),
+                    text=segment_text,
                     speaker=speaker_name,
                     confidence=seg.get("confidence")
                 )
             )
+
+        if empty_segment_count > 0:
+            logger.info(f"🔇 Filtered out {empty_segment_count} empty segments from speaker recognition")
 
         # Update the transcript version
         transcript_version.segments = updated_segments
@@ -253,10 +267,6 @@ async def recognise_speakers_job(
             "total_segments": len(speaker_segments),
             "processing_time_seconds": time.time() - start_time
         }
-
-        # Update legacy fields if this is the active version
-        if conversation.active_transcript_version == version_id:
-            conversation.segments = updated_segments
 
         await conversation.save()
 

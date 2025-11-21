@@ -39,12 +39,12 @@ DEFAULT_QUEUE = "default"
 QUEUE_NAMES = [DEFAULT_QUEUE, TRANSCRIPTION_QUEUE, MEMORY_QUEUE, AUDIO_QUEUE]
 
 # Job retention configuration
-JOB_RESULT_TTL = int(os.getenv("RQ_RESULT_TTL", 3600))  # 1 hour default
+JOB_RESULT_TTL = int(os.getenv("RQ_RESULT_TTL", 86400))  # 24 hour default
 
 # Create queues with custom result TTL
-transcription_queue = Queue(TRANSCRIPTION_QUEUE, connection=redis_conn, default_timeout=300)
+transcription_queue = Queue(TRANSCRIPTION_QUEUE, connection=redis_conn, default_timeout=86400)  # 24 hours for streaming jobs
 memory_queue = Queue(MEMORY_QUEUE, connection=redis_conn, default_timeout=300)
-audio_queue = Queue(AUDIO_QUEUE, connection=redis_conn, default_timeout=3600)  # 1 hour timeout for long sessions
+audio_queue = Queue(AUDIO_QUEUE, connection=redis_conn, default_timeout=86400)  # 24 hours for all-day sessions
 default_queue = Queue(DEFAULT_QUEUE, connection=redis_conn, default_timeout=300)
 
 
@@ -271,7 +271,7 @@ def start_streaming_jobs(
         session_id,
         user_id,
         client_id,
-        job_timeout=3600,  # 1 hour for long recordings
+        job_timeout=86400,  # 24 hours for all-day sessions
         result_ttl=JOB_RESULT_TTL,
         job_id=f"speech-detect_{session_id[:12]}",
         description=f"Listening for speech...",
@@ -281,7 +281,7 @@ def start_streaming_jobs(
 
     # Store job ID for cleanup (keyed by client_id for easy WebSocket cleanup)
     try:
-        redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=3600)  # 1 hour TTL
+        redis_conn.set(f"speech_detection_job:{client_id}", speech_job.id, ex=86400)  # 24 hour TTL
         logger.info(f"📌 Stored speech detection job ID for client {client_id}")
     except Exception as e:
         logger.warning(f"⚠️ Failed to store job ID for {client_id}: {e}")
@@ -294,7 +294,7 @@ def start_streaming_jobs(
         session_id,
         user_id,
         client_id,
-        job_timeout=3600,  # 1 hour for long recordings
+        job_timeout=86400,  # 24 hours for all-day sessions
         result_ttl=JOB_RESULT_TTL,
         job_id=f"audio-persist_{session_id[:12]}",
         description=f"Audio persistence for session {session_id[:12]}",
@@ -321,8 +321,8 @@ def start_post_conversation_jobs(
     Start post-conversation processing jobs after conversation is created.
 
     This creates the standard processing chain after a conversation is created:
-    1. Audio cropping job - Removes silence from audio
-    2. [Optional] Transcription job - Batch transcription (if post_transcription=True)
+    1. [Optional] Transcription job - Batch transcription (if post_transcription=True)
+    2. Audio cropping job - Removes silence from audio
     3. Speaker recognition job - Identifies speakers in audio
     4. Memory extraction job - Extracts memories from conversation (parallel)
     5. Title/summary generation job - Generates title and summary (parallel)
@@ -348,7 +348,29 @@ def start_post_conversation_jobs(
 
     version_id = transcript_version_id or str(uuid.uuid4())
 
-    # Step 1: Audio cropping job
+    # Step 1: Batch transcription job (ALWAYS run to get correct conversation-relative timestamps)
+    # Even for streaming, we need batch transcription before cropping to fix cumulative timestamps
+    transcribe_job_id = f"transcribe_{conversation_id[:12]}"
+    logger.info(f"🔍 DEBUG: Creating transcribe job with job_id={transcribe_job_id}, conversation_id={conversation_id[:12]}, audio_uuid={audio_uuid[:12]}")
+
+    transcription_job = transcription_queue.enqueue(
+        transcribe_full_audio_job,
+        conversation_id,
+        audio_uuid,
+        audio_file_path,
+        version_id,
+        "batch",  # trigger
+        job_timeout=1800,  # 30 minutes
+        result_ttl=JOB_RESULT_TTL,
+        depends_on=depends_on_job,
+        job_id=transcribe_job_id,
+        description=f"Transcribe conversation {conversation_id[:8]}",
+        meta={'audio_uuid': audio_uuid, 'conversation_id': conversation_id}
+    )
+    logger.info(f"📥 RQ: Enqueued transcription job {transcription_job.id}, meta={transcription_job.meta}")
+    crop_depends_on = transcription_job
+
+    # Step 2: Audio cropping job (depends on transcription if it ran, otherwise depends_on_job)
     crop_job_id = f"crop_{conversation_id[:12]}"
     logger.info(f"🔍 DEBUG: Creating crop job with job_id={crop_job_id}, conversation_id={conversation_id[:12]}, audio_uuid={audio_uuid[:12]}")
 
@@ -358,38 +380,15 @@ def start_post_conversation_jobs(
         audio_file_path,
         job_timeout=300,  # 5 minutes
         result_ttl=JOB_RESULT_TTL,
-        depends_on=depends_on_job,
+        depends_on=crop_depends_on,
         job_id=crop_job_id,
         description=f"Crop audio for conversation {conversation_id[:8]}",
         meta={'audio_uuid': audio_uuid, 'conversation_id': conversation_id}
     )
     logger.info(f"📥 RQ: Enqueued cropping job {cropping_job.id}, meta={cropping_job.meta}")
 
-    # Step 2: Transcription job (conditional)
-    transcription_job = None
-    if post_transcription:
-        transcribe_job_id = f"transcribe_{conversation_id[:12]}"
-        logger.info(f"🔍 DEBUG: Creating transcribe job with job_id={transcribe_job_id}, conversation_id={conversation_id[:12]}, audio_uuid={audio_uuid[:12]}")
-
-        transcription_job = transcription_queue.enqueue(
-            transcribe_full_audio_job,
-            conversation_id,
-            audio_uuid,
-            audio_file_path,
-            version_id,
-            "batch",  # trigger
-            job_timeout=1800,  # 30 minutes
-            result_ttl=JOB_RESULT_TTL,
-            depends_on=cropping_job,
-            job_id=transcribe_job_id,
-            description=f"Transcribe conversation {conversation_id[:8]}",
-            meta={'audio_uuid': audio_uuid, 'conversation_id': conversation_id}
-        )
-        logger.info(f"📥 RQ: Enqueued transcription job {transcription_job.id}, meta={transcription_job.meta} (depends on {cropping_job.id})")
-        speaker_depends_on = transcription_job
-    else:
-        logger.info(f"⏭️  RQ: Skipping transcription (streaming already has transcript)")
-        speaker_depends_on = cropping_job
+    # Speaker recognition depends on cropping
+    speaker_depends_on = cropping_job
 
     # Step 3: Speaker recognition job
     speaker_job_id = f"speaker_{conversation_id[:12]}"

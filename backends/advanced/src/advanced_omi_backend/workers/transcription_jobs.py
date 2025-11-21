@@ -120,6 +120,7 @@ async def transcribe_full_audio_job(
     audio_path: str,
     version_id: str,
     trigger: str = "reprocess",
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -368,6 +369,7 @@ async def stream_speech_detection_job(
     session_id: str,
     user_id: str,
     client_id: str,
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -402,7 +404,7 @@ async def stream_speech_detection_job(
     current_job = get_current_job()
     session_key = f"audio:session:{session_id}"
     start_time = time.time()
-    max_runtime = 3540  # 59 minutes
+    max_runtime = 86340  # 24 hours - 60 seconds (graceful exit before RQ timeout)
 
     # Get conversation count
     conversation_count_key = f"session:conversation_count:{session_id}"

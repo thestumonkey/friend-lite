@@ -11,7 +11,7 @@ from advanced_omi_backend.client_manager import (
     ClientManager,
     client_belongs_to_user,
 )
-from advanced_omi_backend.database import chunks_col
+from advanced_omi_backend.models.audio_file import AudioFile
 from advanced_omi_backend.models.conversation import Conversation
 from advanced_omi_backend.users import User
 from fastapi.responses import JSONResponse
@@ -96,23 +96,26 @@ async def get_conversation(conversation_id: str, user: User):
         if not user.is_superuser and conversation.user_id != str(user.user_id):
             return JSONResponse(status_code=403, content={"error": "Access forbidden"})
 
-        # Format conversation for API response - use model_dump and add computed fields
+        # Format conversation for API response - clean, no duplication
         formatted_conversation = conversation.model_dump(
-            mode='json',  # Automatically converts datetime to ISO strings, handles nested models
+            mode='json',
             exclude={'id'}  # Exclude MongoDB internal _id
         )
 
-        # Add computed fields not in the model
-        formatted_conversation.update({
-            "timestamp": 0,  # Legacy field - using created_at instead
-            "has_memory": bool(conversation.memories),
-            "version_info": {
-                "transcript_count": len(conversation.transcript_versions),
-                "memory_count": len(conversation.memory_versions),
-                "active_transcript_version": conversation.active_transcript_version,
-                "active_memory_version": conversation.active_memory_version
-            }
-        })
+        # Clean up transcript versions - remove heavy metadata.words
+        if 'transcript_versions' in formatted_conversation:
+            for version in formatted_conversation['transcript_versions']:
+                if 'metadata' in version and version['metadata']:
+                    # Remove words array - not needed by frontend
+                    version['metadata'].pop('words', None)
+                    # Remove redundant speaker_recognition counts (derivable from segments)
+                    if 'speaker_recognition' in version['metadata']:
+                        sr = version['metadata']['speaker_recognition']
+                        sr.pop('total_segments', None)  # Derivable from len(segments)
+                        sr.pop('speaker_count', None)  # Derivable from identified_speakers
+
+        # Add minimal computed fields
+        formatted_conversation['has_memory'] = len(conversation.memory_versions) > 0
 
         return {"conversation": formatted_conversation}
 
@@ -134,29 +137,26 @@ async def get_conversations(user: User):
             # Admins see all conversations
             user_conversations = await Conversation.find_all().sort(-Conversation.created_at).to_list()
 
-        # Convert conversations to API format
+        # Convert conversations to API format - minimal for list view
         conversations = []
         for conv in user_conversations:
-            # Ensure legacy fields are populated from active transcript version
-            conv._update_legacy_transcript_fields()
-            
-            # Format conversation for list - include segments but exclude large nested fields
+            # Format conversation for list - exclude heavy version data
             conv_dict = conv.model_dump(
-                mode='json',  # Automatically converts datetime to ISO strings
-                exclude={'id', 'transcript_versions', 'memory_versions'}  # Include segments for UI display
+                mode='json',
+                exclude={'id', 'transcript_versions', 'memory_versions'}  # Exclude large version arrays
             )
 
-            # Add computed/external fields
+            # Add computed fields
+            # segment_count - count from active transcript version
+            segment_count = 0
+            if conv.active_transcript:
+                segment_count = len(conv.active_transcript.segments) if conv.active_transcript.segments else 0
+
             conv_dict.update({
-                "timestamp": 0,  # Legacy field - using created_at instead
-                "segment_count": len(conv.segments) if conv.segments else 0,
-                "has_memory": bool(conv.memories),
-                "version_info": {
-                    "transcript_count": len(conv.transcript_versions),
-                    "memory_count": len(conv.memory_versions),
-                    "active_transcript_version": conv.active_transcript_version,
-                    "active_memory_version": conv.active_memory_version
-                }
+                "segment_count": segment_count,
+                "has_memory": len(conv.memory_versions) > 0,
+                "transcript_version_count": len(conv.transcript_versions),
+                "memory_version_count": len(conv.memory_versions)
             })
 
             conversations.append(conv_dict)
@@ -168,86 +168,52 @@ async def get_conversations(user: User):
         return JSONResponse(status_code=500, content={"error": "Error fetching conversations"})
 
 
-async def delete_conversation(audio_uuid: str, user: User):
-    """Delete a conversation and its associated audio file. Users can only delete their own conversations."""
+async def delete_conversation(conversation_id: str, user: User):
+    """Delete a conversation and its associated audio files. Users can only delete their own conversations."""
     try:
         # Create masked identifier for logging
-        masked_uuid = f"{audio_uuid[:8]}...{audio_uuid[-4:]}" if len(audio_uuid) > 12 else "***"
-        logger.info(f"Attempting to delete conversation: {masked_uuid}")
+        masked_id = f"{conversation_id[:8]}...{conversation_id[-4:]}" if len(conversation_id) > 12 else "***"
+        logger.info(f"Attempting to delete conversation: {masked_id}")
 
-        # Detailed debugging only when debug level is enabled
-        if logger.isEnabledFor(logging.DEBUG):
-            total_count = await chunks_col.count_documents({})
-            logger.debug(f"Total conversations in collection: {total_count}")
-            logger.debug(f"UUID length: {len(audio_uuid)}, type: {type(audio_uuid)}")
+        # Find the conversation using Beanie
+        conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
 
-        # First, get the audio chunk record to check ownership and get conversation_id
-        audio_chunk = await chunks_col.find_one({"audio_uuid": audio_uuid})
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Audio chunk lookup result: {'found' if audio_chunk else 'not found'}")
-            if audio_chunk:
-                logger.debug(f"Found audio chunk with client_id: {audio_chunk.get('client_id')}")
-                logger.debug(f"Audio chunk has conversation_id: {audio_chunk.get('conversation_id')}")
-            else:
-                # Try alternative queries for debugging
-                regex_result = await chunks_col.find_one({"audio_uuid": {"$regex": f"^{audio_uuid}$", "$options": "i"}})
-                contains_result = await chunks_col.find_one({"audio_uuid": {"$regex": audio_uuid}})
-                logger.debug(f"Alternative query attempts - case insensitive: {'found' if regex_result else 'not found'}, substring: {'found' if contains_result else 'not found'}")
-
-        if not audio_chunk:
+        if not conversation:
             return JSONResponse(
                 status_code=404,
-                content={"error": f"Audio chunk with audio_uuid '{audio_uuid}' not found"}
+                content={"error": f"Conversation '{conversation_id}' not found"}
             )
 
-        # Check if user has permission to delete this conversation
-        client_id = audio_chunk.get("client_id")
-        if not user.is_superuser and not client_belongs_to_user(client_id, user.user_id):
+        # Check ownership for non-admin users
+        if not user.is_superuser and conversation.user_id != str(user.user_id):
             logger.warning(
-                f"User {user.user_id} attempted to delete conversation {audio_uuid} without permission"
+                f"User {user.user_id} attempted to delete conversation {conversation_id} without permission"
             )
             return JSONResponse(
                 status_code=403,
                 content={
                     "error": "Access forbidden. You can only delete your own conversations.",
-                    "details": f"Conversation '{audio_uuid}' does not belong to your account."
+                    "details": f"Conversation '{conversation_id}' does not belong to your account."
                 }
             )
 
-        # Get audio file paths for deletion
-        audio_path = audio_chunk.get("audio_path")
-        cropped_audio_path = audio_chunk.get("cropped_audio_path")
+        # Get file paths before deletion
+        audio_path = conversation.audio_path
+        cropped_audio_path = conversation.cropped_audio_path
+        audio_uuid = conversation.audio_uuid
+        client_id = conversation.client_id
 
-        # Get conversation_id if this audio chunk has an associated conversation
-        conversation_id = audio_chunk.get("conversation_id")
-        conversation_deleted = False
+        # Delete the conversation from database
+        await conversation.delete()
+        logger.info(f"Deleted conversation {conversation_id}")
 
-        # Delete from audio_chunks collection first
-        audio_result = await chunks_col.delete_one({"audio_uuid": audio_uuid})
+        # Also delete from legacy AudioFile collection if it exists (backward compatibility)
+        audio_file = await AudioFile.find_one(AudioFile.audio_uuid == audio_uuid)
+        if audio_file:
+            await audio_file.delete()
+            logger.info(f"Deleted legacy audio file record for {audio_uuid}")
 
-        if audio_result.deleted_count == 0:
-            return JSONResponse(
-                status_code=404,
-                content={"error": f"Failed to delete audio chunk with audio_uuid '{audio_uuid}'"}
-            )
-
-        logger.info(f"Deleted audio chunk {audio_uuid}")
-
-        # If this audio chunk has an associated conversation, delete it using Beanie
-        if conversation_id:
-            try:
-                conversation_model = await Conversation.find_one(Conversation.conversation_id == conversation_id)
-                if conversation_model:
-                    await conversation_model.delete()
-                    conversation_deleted = True
-                    logger.info(f"Deleted conversation {conversation_id} associated with audio chunk {audio_uuid}")
-                else:
-                    logger.warning(f"Conversation {conversation_id} not found in conversations collection, but audio chunk was deleted")
-            except Exception as e:
-                logger.warning(f"Failed to delete conversation {conversation_id}: {e}")
-
-        # Delete associated audio files
+        # Delete associated audio files from disk
         deleted_files = []
         if audio_path:
             try:
@@ -271,29 +237,26 @@ async def delete_conversation(audio_uuid: str, user: User):
             except Exception as e:
                 logger.warning(f"Failed to delete cropped audio file {cropped_audio_path}: {e}")
 
-        logger.info(f"Successfully deleted conversation {audio_uuid} for user {user.user_id}")
+        logger.info(f"Successfully deleted conversation {conversation_id} for user {user.user_id}")
 
         # Prepare response message
-        delete_summary = []
-        delete_summary.append("audio chunk")
-        if conversation_deleted:
-            delete_summary.append("conversation record")
+        delete_summary = ["conversation"]
         if deleted_files:
             delete_summary.append(f"{len(deleted_files)} audio file(s)")
 
         return JSONResponse(
             status_code=200,
             content={
-                "message": f"Successfully deleted {', '.join(delete_summary)} for '{audio_uuid}'",
+                "message": f"Successfully deleted {', '.join(delete_summary)} '{conversation_id}'",
                 "deleted_files": deleted_files,
                 "client_id": client_id,
                 "conversation_id": conversation_id,
-                "conversation_deleted": conversation_deleted
+                "audio_uuid": audio_uuid
             }
         )
 
     except Exception as e:
-        logger.error(f"Error deleting conversation {audio_uuid}: {e}")
+        logger.error(f"Error deleting conversation {conversation_id}: {e}")
         return JSONResponse(
             status_code=500,
             content={"error": f"Failed to delete conversation: {str(e)}"}

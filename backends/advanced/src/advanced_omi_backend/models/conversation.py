@@ -70,7 +70,7 @@ class Conversation(Document):
 
     # Core identifiers
     conversation_id: Indexed(str, unique=True) = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique conversation identifier")
-    audio_uuid: Indexed(str) = Field(description="Link to audio_chunks collection")
+    audio_uuid: Indexed(str) = Field(description="Session/audio identifier (for tracking audio files)")
     user_id: Indexed(str) = Field(description="User who owns this conversation")
     client_id: Indexed(str) = Field(description="Client device identifier")
 
@@ -81,9 +81,15 @@ class Conversation(Document):
     # Creation metadata
     created_at: Indexed(datetime) = Field(default_factory=datetime.utcnow, description="When the conversation was created")
 
+    # Processing status tracking
+    deleted: bool = Field(False, description="Whether this conversation was deleted due to processing failure")
+    deletion_reason: Optional[str] = Field(None, description="Reason for deletion (no_meaningful_speech, audio_file_not_ready, etc.)")
+    deleted_at: Optional[datetime] = Field(None, description="When the conversation was marked as deleted")
+
     # Summary fields (auto-generated from transcript)
     title: Optional[str] = Field(None, description="Auto-generated conversation title")
-    summary: Optional[str] = Field(None, description="Auto-generated conversation summary")
+    summary: Optional[str] = Field(None, description="Auto-generated short summary (1-2 sentences)")
+    detailed_summary: Optional[str] = Field(None, description="Auto-generated detailed summary (comprehensive, corrected content)")
 
     # Versioned processing
     transcript_versions: List["Conversation.TranscriptVersion"] = Field(
@@ -105,30 +111,18 @@ class Conversation(Document):
         description="Version ID of currently active memory extraction"
     )
 
-    # Legacy fields (auto-populated from active versions)
-    transcript: Union[str, List[Dict[str, Any]], None] = Field(None, description="Current transcript text")
-    segments: List["Conversation.SpeakerSegment"] = Field(default_factory=list, description="Current transcript segments")
-    memories: List[Dict[str, Any]] = Field(default_factory=list, description="Current extracted memories")
-    memory_count: int = Field(default=0, description="Current memory count")
+    # Legacy fields removed - use transcript_versions[active_transcript_version] and memory_versions[active_memory_version]
+    # Frontend should access: conversation.active_transcript.segments, conversation.active_transcript.transcript
 
     @model_validator(mode='before')
     @classmethod
     def clean_legacy_data(cls, data: Any) -> Any:
         """Clean up legacy/malformed data before Pydantic validation."""
-        
-        #TODO Unsure that we need this, likely best to migrate database on startup, or mimic the old structure better
+
         if not isinstance(data, dict):
             return data
 
-        # Fix legacy transcript field if it's a dict (should be string or None)
-        if isinstance(data.get('transcript'), dict):
-            data['transcript'] = None
-
-        # Fix legacy segments field if it's a dict (should be list)
-        if isinstance(data.get('segments'), dict):
-            data['segments'] = []
-
-        # Fix malformed transcript_versions
+        # Fix malformed transcript_versions (from old schema versions)
         if 'transcript_versions' in data and isinstance(data['transcript_versions'], list):
             for version in data['transcript_versions']:
                 if isinstance(version, dict):
@@ -149,28 +143,6 @@ class Conversation(Document):
                                     segment['speaker'] = f"Speaker {segment['speaker']}"
                                 elif not isinstance(segment['speaker'], str):
                                     segment['speaker'] = "unknown"
-
-        # Also fix legacy segments field
-        if 'segments' in data and isinstance(data['segments'], list):
-            for segment in data['segments']:
-                if isinstance(segment, dict) and 'speaker' in segment:
-                    if isinstance(segment['speaker'], int):
-                        segment['speaker'] = f"Speaker {segment['speaker']}"
-                    elif not isinstance(segment['speaker'], str):
-                        segment['speaker'] = "unknown"
-
-        # Populate legacy fields from active transcript version if they're empty
-        active_version_id = data.get('active_transcript_version')
-        if active_version_id and 'transcript_versions' in data and isinstance(data['transcript_versions'], list):
-            for version in data['transcript_versions']:
-                if isinstance(version, dict) and version.get('version_id') == active_version_id:
-                    # Populate transcript if missing
-                    if not data.get('transcript') and version.get('transcript'):
-                        data['transcript'] = version['transcript']
-                    # Populate segments if missing or empty
-                    if (not data.get('segments') or len(data.get('segments', [])) == 0) and version.get('segments'):
-                        data['segments'] = version['segments']
-                    break
 
         return data
 
@@ -195,6 +167,17 @@ class Conversation(Document):
             if version.version_id == self.active_memory_version:
                 return version
         return None
+
+    # Convenience properties that return data from active transcript version
+    @property
+    def transcript(self) -> Optional[str]:
+        """Get transcript text from active transcript version."""
+        return self.active_transcript.transcript if self.active_transcript else None
+
+    @property
+    def segments(self) -> List["Conversation.SpeakerSegment"]:
+        """Get segments from active transcript version."""
+        return self.active_transcript.segments if self.active_transcript else []
 
     def add_transcript_version(
         self,
@@ -223,7 +206,6 @@ class Conversation(Document):
 
         if set_as_active:
             self.active_transcript_version = version_id
-            self._update_legacy_transcript_fields()
 
         return new_version
 
@@ -254,7 +236,6 @@ class Conversation(Document):
 
         if set_as_active:
             self.active_memory_version = version_id
-            self._update_legacy_memory_fields(memory_count)
 
         return new_version
 
@@ -263,7 +244,6 @@ class Conversation(Document):
         for version in self.transcript_versions:
             if version.version_id == version_id:
                 self.active_transcript_version = version_id
-                self._update_legacy_transcript_fields()
                 return True
         return False
 
@@ -272,25 +252,8 @@ class Conversation(Document):
         for version in self.memory_versions:
             if version.version_id == version_id:
                 self.active_memory_version = version_id
-                self._update_legacy_memory_fields(version.memory_count)
                 return True
         return False
-
-    def _update_legacy_transcript_fields(self):
-        """Update legacy transcript fields from active version."""
-        active = self.active_transcript
-        if active:
-            self.transcript = active.transcript
-            self.segments = active.segments
-        else:
-            self.transcript = None
-            self.segments = []
-
-    def _update_legacy_memory_fields(self, memory_count: int):
-        """Update legacy memory fields from active version."""
-        self.memory_count = memory_count
-        # Note: actual memories list would need to be fetched from memory storage
-        # This is just the count for now
 
     class Settings:
         name = "conversations"
@@ -317,7 +280,7 @@ def create_conversation(
     Factory function to create a new conversation.
 
     Args:
-        audio_uuid: Link to audio_chunks collection
+        audio_uuid: Unique identifier for the audio session
         user_id: User who owns this conversation
         client_id: Client device identifier
         conversation_id: Optional unique conversation identifier (auto-generated if not provided)

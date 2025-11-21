@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 async def process_cropping_job(
     conversation_id: str,
     audio_path: str,
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -34,7 +35,7 @@ async def process_cropping_job(
     1. Reads transcript segments from conversation
     2. Extracts speech timestamps
     3. Creates cropped audio file with only speech segments
-    4. Updates audio_chunks collection with cropped file path
+    4. Updates conversation with cropped file path
 
     Args:
         conversation_id: Conversation ID
@@ -46,7 +47,6 @@ async def process_cropping_job(
     """
     from pathlib import Path
     from advanced_omi_backend.utils.audio_utils import _process_audio_cropping_with_relative_timestamps
-    from advanced_omi_backend.database import get_collections, AudioChunksRepository
     from advanced_omi_backend.models.conversation import Conversation
     from advanced_omi_backend.config import CHUNK_DIR
 
@@ -58,7 +58,7 @@ async def process_cropping_job(
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
 
-        # Extract speech segments from transcript
+        # Extract speech segments from transcript (property returns data from active version)
         segments = conversation.segments
         if not segments or len(segments) == 0:
             logger.warning(f"⚠️ No segments found for conversation {conversation_id}, skipping cropping")
@@ -78,17 +78,13 @@ async def process_cropping_job(
         cropped_filename = f"cropped_{original_path.name}"
         output_path = CHUNK_DIR / cropped_filename
 
-        # Get repository for database updates
-        collections = get_collections()
-        repository = AudioChunksRepository(collections["chunks_col"])
-
-        # Process cropping
-        success = await _process_audio_cropping_with_relative_timestamps(
+        # Process cropping (no repository needed - we update conversation directly)
+        success, segment_mapping = await _process_audio_cropping_with_relative_timestamps(
             str(original_path),
             speech_segments,
             str(output_path),
             audio_uuid,
-            repository
+            None  # No repository - we update conversation model directly
         )
 
         if not success:
@@ -99,13 +95,46 @@ async def process_cropping_job(
                 "reason": "cropping_failed"
             }
 
-        # Calculate cropped duration
-        cropped_duration_seconds = sum(end - start for start, end in speech_segments)
+        # Calculate actual cropped duration from kept segments
+        kept_segments = [m for m in segment_mapping if m["kept"]]
+        if kept_segments:
+            # Duration is end of last kept segment
+            cropped_duration_seconds = kept_segments[-1]["cropped_end"]
+        else:
+            cropped_duration_seconds = 0.0
 
-        # Update conversation with cropped audio path
+        # Update segment timestamps using the mapping
+        # Only keep segments that weren't filtered out
+        updated_segments = []
+        for i, seg in enumerate(segments):
+            if i >= len(segment_mapping):
+                logger.warning(f"⚠️ Segment {i} not in mapping, skipping")
+                continue
+
+            mapping = segment_mapping[i]
+            if mapping["kept"]:
+                # Segment was kept - use the cropped timestamps
+                updated_seg = seg.model_copy()
+                updated_seg.start = mapping["cropped_start"]
+                updated_seg.end = mapping["cropped_end"]
+                updated_segments.append(updated_seg)
+                logger.debug(
+                    f"Segment {i}: {seg.start:.2f}-{seg.end:.2f}s → "
+                    f"{updated_seg.start:.2f}-{updated_seg.end:.2f}s (in cropped audio)"
+                )
+            else:
+                # Segment was filtered out (too short)
+                logger.debug(
+                    f"Segment {i} filtered out (duration {seg.end - seg.start:.2f}s < MIN_SPEECH_SEGMENT_DURATION)"
+                )
+
+        # Update conversation with cropped audio path and adjusted segments
         conversation.cropped_audio_path = cropped_filename
+        # Update the active transcript version segments
+        if conversation.active_transcript:
+            conversation.active_transcript.segments = updated_segments
         await conversation.save()
-        logger.info(f"💾 Updated conversation {conversation_id[:12]} with cropped_audio_path: {cropped_filename}")
+        logger.info(f"💾 Updated conversation {conversation_id[:12]} with cropped_audio_path and adjusted {len(updated_segments)} segment timestamps")
 
         logger.info(f"✅ RQ: Completed audio cropping for conversation {conversation_id} ({cropped_duration_seconds:.1f}s)")
 
@@ -140,6 +169,7 @@ async def audio_streaming_persistence_job(
     session_id: str,
     user_id: str,
     client_id: str,
+    *,
     redis_client=None
 ) -> Dict[str, Any]:
     """
@@ -183,7 +213,7 @@ async def audio_streaming_persistence_job(
 
     # Job control
     session_key = f"audio:session:{session_id}"
-    max_runtime = 3540  # 59 minutes
+    max_runtime = 86340  # 24 hours - 60 seconds (graceful exit before RQ timeout)
     start_time = time.time()
 
     from advanced_omi_backend.config import CHUNK_DIR
@@ -302,7 +332,7 @@ async def audio_streaming_persistence_job(
 
                 # Store file path in Redis (keyed by conversation_id, not session_id)
                 audio_file_key = f"audio:file:{current_conversation_id}"
-                await redis_client.set(audio_file_key, str(file_path), ex=3600)
+                await redis_client.set(audio_file_key, str(file_path), ex=86400)  # 24 hour TTL
                 logger.info(f"💾 Stored audio file path in Redis: {audio_file_key}")
         else:
             # Key deleted - conversation ended, close current file
