@@ -8,6 +8,11 @@ on:
       - 'backends/advanced/src/**'
       - '.github/workflows/robot-tests.yml'
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   robot-tests:
     runs-on: ubuntu-latest
@@ -176,28 +181,29 @@ jobs:
         TRANSCRIPTION_PROVIDER: deepgram
         MEMORY_PROVIDER: friend_lite
       run: |
-        # Give workers a moment to register
-        echo "Waiting 10 seconds for workers to register with Redis..."
-        sleep 10
+        echo "Waiting for workers to register with Redis (up to 60s)..."
+        for i in {1..30}; do
+          WORKER_COUNT=$(docker compose -f docker-compose-ci.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); print(len(Worker.all(connection=r)))' 2>/dev/null || echo "0")
 
-        echo "Checking RQ worker registration in Redis..."
-        docker compose -f docker-compose-ci.yml exec -T workers-test uv run python -c "
-        from rq import Worker
-        from redis import Redis
-        import os
+          if [ "$WORKER_COUNT" -ge 6 ]; then
+            echo "✓ Found $WORKER_COUNT workers registered"
+            break
+          fi
 
-        redis_url = os.getenv('REDIS_URL', 'redis://redis-test:6379/0')
-        r = Redis.from_url(redis_url)
-        workers = Worker.all(connection=r)
+          if [ $i -eq 30 ]; then
+            echo "✗ Workers failed to register after 60s"
+            echo "Showing worker logs:"
+            docker compose -f docker-compose-ci.yml logs --tail=50 workers-test
+            exit 1
+          fi
 
-        print(f'Total registered workers: {len(workers)}')
-        for worker in workers:
-            print(f'  - {worker.name}: queues={worker.queue_names()}, state={worker.get_state()}')
+          echo "Attempt $i/30: $WORKER_COUNT workers registered (waiting for 6+)..."
+          sleep 2
+        done
 
-        if len(workers) == 0:
-            print('⚠️ WARNING: No workers registered!')
-            exit(1)
-        "
+        echo ""
+        echo "Checking registered workers:"
+        docker compose -f docker-compose-ci.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); workers = Worker.all(connection=r); print(f"Total registered workers: {len(workers)}"); [print(f"  - {w.name}: queues={w.queue_names()}, state={w.get_state()}") for w in workers]'
 
         echo "✓ Workers registered and ready"
 
@@ -223,8 +229,20 @@ jobs:
         echo "=== Worker Logs (last 50 lines) ==="
         docker compose -f docker-compose-ci.yml logs --tail=50 workers-test
 
-    - name: Publish Robot Framework test results
+    - name: Check if test results exist
       if: always()
+      id: check_results
+      run: |
+        if [ -f tests/results/output.xml ]; then
+          echo "results_exist=true" >> $GITHUB_OUTPUT
+        else
+          echo "results_exist=false" >> $GITHUB_OUTPUT
+          echo "⚠️ No test results found in tests/results/"
+          ls -la tests/results/ || echo "Results directory doesn't exist"
+        fi
+
+    - name: Publish Robot Framework test results
+      if: always() && steps.check_results.outputs.results_exist == 'true'
       uses: joonvena/robotframework-reporter-action@v2.5
       with:
         report_path: tests/results
@@ -232,7 +250,7 @@ jobs:
         show_passed_tests: false
 
     - name: Upload Robot Framework HTML reports
-      if: always()
+      if: always() && steps.check_results.outputs.results_exist == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: robot-test-reports-html
@@ -241,8 +259,19 @@ jobs:
           tests/results/log.html
         retention-days: 30
 
+    - name: Publish HTML Report as GitHub Pages artifact
+      if: always() && steps.check_results.outputs.results_exist == 'true'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: tests/results
+
+    - name: Deploy to GitHub Pages
+      if: always() && steps.check_results.outputs.results_exist == 'true'
+      uses: actions/deploy-pages@v4
+      id: deployment
+
     - name: Upload Robot Framework XML output
-      if: always()
+      if: always() && steps.check_results.outputs.results_exist == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: robot-test-results-xml
