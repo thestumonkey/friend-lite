@@ -241,14 +241,6 @@ jobs:
           ls -la tests/results/ || echo "Results directory doesn't exist"
         fi
 
-    - name: Publish Robot Framework test results
-      if: always() && steps.check_results.outputs.results_exist == 'true'
-      uses: joonvena/robotframework-reporter-action@v2.5
-      with:
-        report_path: tests/results
-        gh_access_token: ${{ secrets.GITHUB_TOKEN }}
-        show_passed_tests: false
-
     - name: Upload Robot Framework HTML reports
       if: always() && steps.check_results.outputs.results_exist == 'true'
       uses: actions/upload-artifact@v4
@@ -269,6 +261,18 @@ jobs:
       if: always() && steps.check_results.outputs.results_exist == 'true'
       uses: actions/deploy-pages@v4
       id: deployment
+
+    - name: Add deployment info to summary
+      if: always() && steps.check_results.outputs.results_exist == 'true'
+      run: |
+        echo "## 📊 Test Reports Published" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Your test reports are available at:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- [📋 Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/report.html)" >> $GITHUB_STEP_SUMMARY
+        echo "- [📝 Detailed Log](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/log.html)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Robot Framework XML output
       if: always() && steps.check_results.outputs.results_exist == 'true'
