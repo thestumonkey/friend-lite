@@ -15,7 +15,7 @@ Suite Teardown   Suite Teardown
 
 Get User Conversations Test
     [Documentation]    Test getting conversations for authenticated user
-    [Tags]    conversation user positive speed-fast
+    [Tags]    conversation	user
 
     ${conversations_data}=        Get User Conversations
 
@@ -36,7 +36,7 @@ Get User Conversations Test
 
 Get Conversation By ID Test
     [Documentation]    Test getting a specific conversation by ID
-    [Tags]    conversation individual positive speed-long
+    [Tags]    conversation
 
     ${test_conversation}=    Find Test Conversation
 
@@ -51,7 +51,7 @@ Get Conversation By ID Test
 
 Reprocess test and get Conversation Versions Test
     [Documentation]    Test getting version history for a conversation
-    [Tags]    conversation versions positive speed-mid
+    [Tags]    conversation	versioning
 
     ${test_conversation}=    Find Test Conversation
     ${conversation_id}=    Set Variable    ${test_conversation}[conversation_id]
@@ -67,7 +67,7 @@ Reprocess test and get Conversation Versions Test
 
 Unauthorized Conversation Access Test
     [Documentation]    Test that conversation endpoints require authentication
-    [Tags]    conversation security negative speed-fast
+    [Tags]    conversation	security	negative
     Get Anonymous Session    session
 
     # Try to access conversations without token
@@ -76,7 +76,7 @@ Unauthorized Conversation Access Test
 
 Non-Existent Conversation Test
     [Documentation]    Test accessing a non-existent conversation
-    [Tags]    conversation negative notfound speed-fast
+    [Tags]    conversation	negative
 
     ${fake_id}=         Set Variable    non-existent-conversation-id
 
@@ -85,7 +85,7 @@ Non-Existent Conversation Test
 
 Reprocess Memory Test
     [Documentation]    Test triggering memory reprocessing and verify new version created
-    [Tags]    conversation reprocess memory positive speed-fast
+    [Tags]    conversation	processing	memory
 
     Skip  msg=Memory reprocessing needs a different transcript and different test data to work
 
@@ -122,7 +122,7 @@ Reprocess Memory Test
 
 Close Conversation Test
     [Documentation]    Test closing current conversation for a client
-    [Tags]    conversation close positive speed-fast
+    [Tags]    conversation	close
     
     Skip     msg=Close conversation needs to be evaluated as to it's purpose from the client side
 
@@ -137,7 +137,7 @@ Close Conversation Test
 
 Invalid Conversation Operations Test
     [Documentation]    Test invalid operations on conversations
-    [Tags]    conversation negative invalid speed-fast
+    [Tags]    conversation	negative	invalid
 
     ${fake_id}=         Set Variable    invalid-conversation-id
 
@@ -151,7 +151,7 @@ Invalid Conversation Operations Test
 
 Transcript Version activate Test
     [Documentation]    Test version activation (if versions exist)
-    [Tags]    conversation versions activation speed-mid
+    [Tags]    conversation	versioning	activation
 
     ${test_conversation}=    Find Test Conversation
 
@@ -179,7 +179,7 @@ Transcript Version activate Test
 
 Get conversation permission Test
     [Documentation]    Test that users can only access their own conversations
-    [Tags]    conversation security isolation speed-mid
+    [Tags]    conversation	security	permissions
 
     Create Test Conversation
     # Create a test user

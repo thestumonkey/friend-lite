@@ -16,13 +16,13 @@ Suite Teardown   Suite Teardown
 
 Login With Valid Credentials Test
     [Documentation]    Test successful login with admin credentials
-    [Tags]    auth login positive speed-fast
+    [Tags]    auth
     ${user}=           Get User Details    api
     Should Be Equal    ${user}[email]    ${ADMIN_EMAIL}
 
 Login With Invalid Credentials Test
     [Documentation]    Test login failure with invalid credentials
-    [Tags]    auth login negative speed-fast
+    [Tags]    auth	negative
     Get Anonymous Session    anon_session
 
     &{auth_data}=    Create Dictionary    username=${ADMIN_EMAIL}    password=wrong-password
@@ -33,7 +33,7 @@ Login With Invalid Credentials Test
 
 Get Current User Test
     [Documentation]    Test getting current authenticated user
-    [Tags]    auth user positive speed-fast
+    [Tags]    auth	user
 
     ${user}=           Get User Details    api
 
@@ -43,7 +43,7 @@ Get Current User Test
 
 Unauthorized Access Test
     [Documentation]    Test that endpoints require authentication
-    [Tags]    auth security negative speed-fast
+    [Tags]    auth	security	negative
     Get Anonymous Session    anon_session
 
     # Try to access protected endpoint without token
@@ -52,7 +52,7 @@ Unauthorized Access Test
 
 Create User Test
     [Documentation]    Test creating a new user (admin only)
-    [Tags]    users admin positive speed-fast
+    [Tags]    user	admin
 
     ${user}=           Create Test User    api
 
@@ -63,7 +63,7 @@ Create User Test
 
 Get All Users Test
     [Documentation]    Test getting all users (admin only)
-    [Tags]    users admin positive speed-fast
+    [Tags]    user	admin
 
     ${response}=       GET On Session    api    /api/users
 
@@ -82,7 +82,7 @@ Get All Users Test
 
 Non-Admin User Cannot Create Users Test
     [Documentation]    Test that non-admin users cannot create users
-    [Tags]    users security negative speed-fast
+    [Tags]    user	security	negative
     # Create a non-admin user
     ${test_user}=       Create Test User    api
     Create API Session    user_session    email=${test_user}[email]    password=${TEST_USER_PASSWORD}
@@ -95,7 +95,7 @@ Non-Admin User Cannot Create Users Test
 
 Update User Test
     [Documentation]    Test updating a user password (admin only)
-    [Tags]    users admin positive speed-fast
+    [Tags]    user	admin
 
     ${test_user}=       Create Test User    api
     ${new_password}=    Set Variable    new-test-password-456
@@ -122,7 +122,7 @@ Update User Test
 
 Delete User Test
     [Documentation]    Test deleting a user (admin only)
-    [Tags]    users admin positive speed-fast
+    [Tags]    user	admin
 
     ${user}=           Create Test User    api
 

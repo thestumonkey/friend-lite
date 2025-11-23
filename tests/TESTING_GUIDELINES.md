@@ -70,7 +70,7 @@ Each resource file should have a clear purpose and contain related keywords. Res
 *** Test Cases ***
 Test Name Should Describe Business Scenario
     [Documentation]    Clear explanation of what this test validates
-    [Tags]            relevant    tags
+    [Tags]    relevant	tags
 
     # Arrange - Setup test data and environment
     ${session}=    Get Admin API Session
@@ -82,6 +82,71 @@ Test Name Should Describe Business Scenario
     Should Be True    ${result}[successful] > 0    At least one file should be processed successfully
     Should Contain    ${result}[message]    processing completed    Processing should complete successfully
 ```
+
+### Test Tagging Guidelines
+
+**CRITICAL: Tags must be TAB-SEPARATED, not space-separated.**
+
+#### Tag Format
+```robot
+# Correct - tabs between tags
+[Tags]    auth	negative
+
+# Incorrect - spaces between tags
+[Tags]    auth negative
+```
+
+#### Tag Consolidation Rules
+
+**Before adding any new tag, you MUST:**
+1. Check **[@tests/tags.md](tags.md)** for existing tags
+2. Verify no synonym exists for your intended tag
+3. Use the consolidated tag name if a synonym exists
+
+**Prohibited Tag Synonyms:**
+- ❌ `positive` - Removed (default assumption)
+- ❌ `users` → Use `user`
+- ❌ `login` → Use `auth`
+- ❌ `version`, `versions` → Use `versioning`
+- ❌ `stats` → Use `statistics`
+- ❌ `status`, `readiness` → Use `health`
+- ❌ `jobs` → Use `queue`
+- ❌ `isolation` → Use `permissions`
+
+**Full list:** See **[@tests/tags.md](tags.md)**
+
+#### Tag Selection Guidelines
+
+1. **Check existing tags first** - Review tags.md before creating new tags
+2. **Use specific over general** - `auth` + `negative` is better than just `security`
+3. **Avoid redundancy** - Don't use both `auth` and `security` unless testing both aspects
+4. **Single words preferred** - `auth` not `authentication`
+5. **Lowercase only** - All tags must be lowercase
+6. **2-4 tags per test** - More than 4 tags usually indicates poor tag selection
+
+#### Common Tag Combinations
+
+```robot
+# Authentication tests
+[Tags]    auth	negative          # Failed login
+[Tags]    auth	admin             # Admin authentication
+
+# CRUD operations
+[Tags]    user	crud	negative  # Failed user creation
+
+# Integration tests
+[Tags]    integration	memory	processing
+
+# Security tests
+[Tags]    admin	security	negative
+```
+
+#### Updating Tags
+
+When consolidating or changing tags:
+1. Update all affected test files
+2. Update **[@tests/tags.md](tags.md)** with the changes
+3. Document the reason for the change in the commit message
 
 ### Resource File Documentation
 Each resource file should start with clear documentation:

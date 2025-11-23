@@ -19,7 +19,7 @@ ${TEST_AUDIO_PATH}    ${CURDIR}/../../extras/test-audios/DIY Experts Glass Blowi
 
 Streaming jobs created on stream start
     [Documentation]    Verify both jobs are created and remain active during streaming
-    [Tags]    websocket streaming jobs integration speed-mid
+    [Tags]    websocket	streaming	queue	integration
 
     ${device_name}=    Set Variable    ws-test
     # Open stream
@@ -55,7 +55,7 @@ Conversation Job Created After Speech Detection
     [Documentation]    Verify that after enough speech is detected (5+ words),
     ...                an open_conversation_job is created and linked to the
     ...                speech detection job via conversation_job_id in meta.
-    [Tags]    websocket streaming jobs conversation speech speed-mid
+    [Tags]    websocket	streaming	queue	conversation	speech
 
     # Open stream
     ${stream_id}=    Open Audio Stream    device_name=ws-conv
@@ -83,7 +83,7 @@ Conversation Closes On Inactivity Timeout And Restarts Speech Detection
     ...                and post-conversation jobs are enqueued (transcription, speaker, memory, title).
     ...
     ...                Test environment sets SPEECH_INACTIVITY_THRESHOLD_SECONDS=5 in docker-compose-test.yml.
-    [Tags]    websocket streaming jobs conversation inactivity timeout speed-long
+    [Tags]    websocket	streaming	queue	conversation	inactivity	timeout
 
     ${device_name}=    Set Variable    test-post
 
@@ -149,7 +149,7 @@ Conversation Closes On Inactivity Timeout And Restarts Speech Detection
 Segment Timestamps Match Cropped Audio
     [Documentation]    Verify that after conversation closes and cropping completes,
     ...                segment timestamps are adjusted to match the cropped audio file.
-    [Tags]    websocket streaming cropping segments audio speed-long
+    [Tags]    websocket	streaming	cropping	segments	audio
 
     ${device_name}=    Set Variable    seg-test
 

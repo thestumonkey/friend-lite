@@ -21,7 +21,7 @@ Test Setup       Clear Test Databases
 *** Test Cases ***
 Full Pipeline Integration Test
     [Documentation]    Complete end-to-end test of audio processing pipeline
-    [Tags]    integration pipeline e2e speed-mid
+    [Tags]    integration	processing	e2e
     [Timeout]          600s
 
     Log    Starting Full Pipeline Integration Test    INFO
@@ -47,7 +47,7 @@ Full Pipeline Integration Test
 
 Audio Playback And Segment Timing Test
     [Documentation]    Verify audio files are accessible and segment timestamps are valid
-    [Tags]    integration audio segments cropping speed-long
+    [Tags]    integration	audio	segments	cropping
     [Timeout]          180s
 
     Log    Starting Audio Playback And Segment Timing Test    INFO

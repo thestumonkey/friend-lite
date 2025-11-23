@@ -13,7 +13,7 @@ Suite Teardown   Suite Teardown
 
 Readiness Check Test
     [Documentation]    Test readiness check endpoint for container orchestration
-    [Tags]    readiness status positive speed-fast
+    [Tags]    health
     Get Anonymous Session    anon_session
 
     ${response}=    GET On Session    anon_session    /readiness
@@ -26,7 +26,7 @@ Readiness Check Test
 
 Health Check Test
     [Documentation]    Test main health check endpoint
-    [Tags]    health status positive speed-fast
+    [Tags]    health
 
     ${response}=    GET On Session    api    /health
     Should Be Equal As Integers    ${response.status_code}    200
@@ -78,7 +78,7 @@ Health Check Test
 
 Auth Health Check Test
     [Documentation]    Test authentication service health check
-    [Tags]    auth health positive speed-fast
+    [Tags]    auth	health
     Get Anonymous Session    session
 
     ${response}=    GET On Session    session   /api/auth/health
@@ -92,7 +92,7 @@ Auth Health Check Test
 
 Queue Worker Details Test
     [Documentation]    Test queue worker details endpoint (includes queue health and task manager)
-    [Tags]    queue health positive speed-fast
+    [Tags]    queue	health
 
     ${response}=    GET On Session    api    /api/queue/worker-details
     Should Be Equal As Integers    ${response.status_code}    200
@@ -120,7 +120,7 @@ Queue Worker Details Test
 
 Chat Health Check Test
     [Documentation]    Test chat service health check
-    [Tags]    chat health positive speed-fast
+    [Tags]    chat	health
     Get Anonymous Session    session
 
     ${response}=    GET On Session    session    /api/chat/health
@@ -134,7 +134,7 @@ Chat Health Check Test
 
 System Metrics Test
     [Documentation]    Test system metrics endpoint (admin only)
-    [Tags]    metrics admin positive speed-fast
+    [Tags]    metrics	admin
 
     ${response}=       GET On Session    api    /api/metrics
     Should Be Equal As Integers    ${response.status_code}    200
@@ -145,7 +145,7 @@ System Metrics Test
 
 Queue Stats Test
     [Documentation]    Test queue stats endpoint
-    [Tags]    queue stats positive speed-fast
+    [Tags]    queue	statistics
 
     ${response}=       GET On Session    api    /api/queue/stats
     Should Be Equal As Integers    ${response.status_code}    200
@@ -161,7 +161,7 @@ Queue Stats Test
 
 Health Check Service Details Test
     [Documentation]    Test detailed service health information including Redis workers
-    [Tags]    health services detailed speed-fast
+    [Tags]    health	services	detailed
     Get Anonymous Session    session
     ${response}=    GET On Session    session    /health
     Should Be Equal As Integers    ${response.status_code}    200
@@ -193,7 +193,7 @@ Health Check Service Details Test
 
 Non-Admin Cannot Access Admin Endpoints Test
     [Documentation]    Test that non-admin users cannot access admin health endpoints
-    [Tags]    health security negative speed-fast
+    [Tags]    health	security	negative
 
     # Create a non-admin user
     ${test_user}=      Create Test User    api
@@ -208,7 +208,7 @@ Non-Admin Cannot Access Admin Endpoints Test
 
 Unauthorized Health Access Test
     [Documentation]    Test health endpoints that require authentication
-    [Tags]    health security negative speed-fast
+    [Tags]    health	security	negative
     Get Anonymous Session    session
 
     # Admin-only endpoints should require authentication
