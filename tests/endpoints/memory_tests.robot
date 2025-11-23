@@ -15,7 +15,7 @@ Suite Teardown   Suite Teardown
 
 Get User Memories Test
     [Documentation]    Test getting memories for authenticated user and verify trumpet flower memory exists if memories are present
-    [Tags]    memory	user
+    [Tags]    memory	permissions
 
     ${response}=       GET On Session    api    /api/memories
 
@@ -59,7 +59,7 @@ Get User Memories Test
 
 Search Memories Test
     [Documentation]    Test searching memories by query and verify trumpet flower memory exists
-    [Tags]    memory	search
+    [Tags]    memory
 
     &{params}=         Create Dictionary    query=trumpet flower    limit=20    score_threshold=0.4
     ${response}=       GET On Session    api    /api/memories/search    params=${params}
@@ -92,7 +92,7 @@ Search Memories Test
 
 Memory Pagination Test
     [Documentation]    Test memory pagination with different limits
-    [Tags]    memory	pagination
+    [Tags]    memory
 
     # Test with small limit
     &{params1}=    Create Dictionary    limit=5
@@ -114,7 +114,7 @@ Memory Pagination Test
 
 Non-Admin Cannot Access Admin Memories Test
     [Documentation]    Test that non-admin users cannot access admin memory endpoint
-    [Tags]    memory	security	negative
+    [Tags]    memory	permissions
 
     # Create a non-admin user
     ${test_user}=      Create Test User    api
@@ -129,7 +129,7 @@ Non-Admin Cannot Access Admin Memories Test
 
 Unauthorized Memory Access Test
     [Documentation]    Test that memory endpoints require authentication
-    [Tags]    memory	security	negative
+    [Tags]    memory	permissions
     Get Anonymous Session    session
 
     # Try to access memories without token

@@ -18,7 +18,7 @@ Test Setup       Clear Test Databases
 
 Test Upload audio creates transcription job
     [Documentation]    Test that uploading audio creates a transcription job in the queue
-    [Tags]    integration	queue	upload
+    [Tags]    e2e	queue	audio-upload
     [Timeout]          120s
 
     Log    Starting Upload Job Queue Test    INFO
@@ -64,7 +64,7 @@ Test Upload audio creates transcription job
 
 Test Reprocess Conversation Job Queue
     [Documentation]    Test that reprocess transcript jobs are created and processed correctly
-    [Tags]    integration	queue	processing
+    [Tags]    e2e	queue
     [Timeout]          180s
 
     Log    Starting Reprocess Job Queue Test    INFO

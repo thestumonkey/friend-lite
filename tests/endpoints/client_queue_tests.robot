@@ -12,7 +12,7 @@ Suite Teardown   Delete All Sessions
 
 Get Active Clients Test
     [Documentation]    Test getting active client information
-    [Tags]    client	active
+    [Tags]    infra
 
     Create API Session    admin_session
     ${response}=       GET On Session    admin_session    /api/clients/active
@@ -52,7 +52,7 @@ Get Queue Jobs Test
 
 Get Queue Jobs With Different Limits Test
     [Documentation]    Test queue jobs pagination with different limits
-    [Tags]    queue	pagination
+    [Tags]    queue
     Get Anonymous Session    anon_session
 
     Create API Session    admin_session
@@ -77,7 +77,7 @@ Get Queue Jobs With Different Limits Test
 
 Get Queue Statistics Test
     [Documentation]    Test getting queue statistics
-    [Tags]    queue	statistics
+    [Tags]    queue
 
     ${response}=   GET On Session    api    /api/queue/stats
     Should Be Equal As Integers    ${response.status_code}    200
@@ -108,7 +108,7 @@ Get Queue Health Test
 
 Queue Jobs User Isolation Test
     [Documentation]    Test that regular users only see their own queue jobs
-    [Tags]    queue	security	permissions
+    [Tags]    queue	permissions
     Get Anonymous Session    anon_session
 
     Create API Session    admin_session
@@ -136,7 +136,7 @@ Queue Jobs User Isolation Test
 
 Invalid Queue Parameters Test
     [Documentation]    Test queue endpoints with invalid parameters
-    [Tags]    queue	negative	validation
+    [Tags]    queue
     Get Anonymous Session    anon_session
 
     Create API Session    admin_session
@@ -158,7 +158,7 @@ Invalid Queue Parameters Test
 
 Unauthorized Client Access Test
     [Documentation]    Test that client endpoints require authentication
-    [Tags]    client	security	negative
+    [Tags]    infra	permissions
     Get Anonymous Session    session
 
     # Try to access active clients without token
@@ -167,7 +167,7 @@ Unauthorized Client Access Test
 
 Unauthorized Queue Access Test
     [Documentation]    Test that queue endpoints require authentication
-    [Tags]    queue	security	negative
+    [Tags]    queue	permissions
     Get Anonymous Session    session
 
     # Try to access queue jobs without token
@@ -180,7 +180,7 @@ Unauthorized Queue Access Test
 
 Client Manager Integration Test
     [Documentation]    Test client manager functionality
-    [Tags]    client	manager	integration
+    [Tags]    infra	e2e
     Get Anonymous Session    anon_session
 
     Create API Session    admin_session

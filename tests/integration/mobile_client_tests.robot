@@ -9,49 +9,49 @@ Suite Teardown   Suite Teardown
 
 Test server connection
     [Documentation]    Test connection to the server
-    [Tags]    debug	connection	todo
+    [Tags]    e2e
 
     Log    Testing server connection    INFO
     Fail    Test not written yet - placeholder test
 
 Login to server
     [Documentation]    Test logging in to the server from mobile client
-    [Tags]    
+    [Tags]    e2e
     Log    Logging in to server    INFO
     Fail    Test not written yet - placeholder test
 
 Scan bluetooth devices
     [Documentation]    Scan for available bluetooth devices
-    [Tags]    
+    [Tags]    e2e
     Log    Scanning bluetooth devices    INFO
     Fail    Test not written yet - placeholder test
 
 Filter devices by omi
     [Documentation]    Filter scanned devices by omi
-    [Tags]    
+    [Tags]    e2e
     Log    Filtering devices by omi    INFO
     Fail    Test not written yet - placeholder test
 
 Connect to bluetooth device
     [Documentation]    Connect to a bluetooth device
-    [Tags]    
+    [Tags]    e2e
     Log    Connecting to bluetooth device    INFO
     Fail    Test not written yet - placeholder test
 
 Get device codec
     [Documentation]    Get the codec information from the device
-    [Tags]    
+    [Tags]    e2e
     Log    Getting device codec    INFO
     Fail    Test not written yet - placeholder test
 
 Get device battery level
     [Documentation]    Get the battery level from the device
-    [Tags]    
+    [Tags]    e2e
     Log    Getting device battery level    INFO
     Fail    Test not written yet - placeholder test
 
 Start audio stream
     [Documentation]    Start streaming audio from the device
-    [Tags]    
+    [Tags]    e2e
     Log    Starting audio stream    INFO
     Fail    Test not written yet - placeholder test

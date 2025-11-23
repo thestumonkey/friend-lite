@@ -15,7 +15,7 @@ Suite Teardown   Suite Teardown
 
 Create Chat Session Test
     [Documentation]    Test creating a new chat session
-    [Tags]    chat	session
+    [Tags]    chat
 
     ${session}=        Create Test Chat Session
 
@@ -31,7 +31,7 @@ Create Chat Session Test
 
 Create Chat Session With Custom Title Test
     [Documentation]    Test creating chat session with custom title
-    [Tags]    chat	session
+    [Tags]    chat
 
     ${random_id}=      Get Random ID
     ${custom_title}=   Set Variable    Custom Chat Title ${random_id}
@@ -46,7 +46,7 @@ Create Chat Session With Custom Title Test
 
 Get Chat Sessions Test
     [Documentation]    Test getting all chat sessions for user
-    [Tags]    chat	session	list
+    [Tags]    chat
 
     # Create a test session first
     ${test_session}=   Create Test Chat Session
@@ -77,7 +77,7 @@ Get Chat Sessions Test
 
 Get Specific Chat Session Test
     [Documentation]    Test getting a specific chat session
-    [Tags]    chat	session
+    [Tags]    chat
 
     ${test_session}=   Create Test Chat Session
 
@@ -97,7 +97,7 @@ Get Specific Chat Session Test
 
 Update Chat Session Test
     [Documentation]    Test updating a chat session title
-    [Tags]    chat	session	update
+    [Tags]    chat
 
     ${test_session}=   Create Test Chat Session
 
@@ -114,7 +114,7 @@ Update Chat Session Test
 
 Delete Chat Session Test
     [Documentation]    Test deleting a chat session
-    [Tags]    chat	session	delete
+    [Tags]    chat
 
     ${test_session}=   Create Test Chat Session
 
@@ -127,7 +127,7 @@ Delete Chat Session Test
 
 Get Session Messages Test
     [Documentation]    Test getting messages from a chat session
-    [Tags]    chat	message
+    [Tags]    chat
 
     ${test_session}=   Create Test Chat Session
 
@@ -146,7 +146,7 @@ Get Session Messages Test
 
 Get Chat Statistics Test
     [Documentation]    Test getting chat statistics for user
-    [Tags]    chat	statistics
+    [Tags]    chat
 
     ${response}=       Get Chat Statistics
 
@@ -162,7 +162,7 @@ Get Chat Statistics Test
 
 Chat Session Pagination Test
     [Documentation]    Test chat session pagination
-    [Tags]    chat	session	pagination
+    [Tags]    chat
 
     # Test with different limits
     ${response1}=      Get Chat Sessions    5
@@ -181,7 +181,7 @@ Chat Session Pagination Test
 
 Unauthorized Chat Access Test
     [Documentation]    Test that chat endpoints require authentication
-    [Tags]    chat	security	negative
+    [Tags]    chat	permissions
     Get Anonymous Session    session
 
     # Try to access sessions without token
@@ -194,7 +194,7 @@ Unauthorized Chat Access Test
 
 Non-Existent Session Operations Test
     [Documentation]    Test operations on non-existent chat sessions
-    [Tags]    chat	session	negative
+    [Tags]    chat
 
     ${fake_id}=        Set Variable    non-existent-session-id
 
@@ -216,7 +216,7 @@ Non-Existent Session Operations Test
 
 Invalid Chat Session Data Test
     [Documentation]    Test creating chat session with invalid data
-    [Tags]    chat	session	negative	validation
+    [Tags]    chat
 
     # Test with title too long (over 200 characters)
     ${long_title}=     Generate Random String    201    [LETTERS]
@@ -233,7 +233,7 @@ Invalid Chat Session Data Test
 
 User Isolation Test
     [Documentation]    Test that users can only access their own chat sessions
-    [Tags]    chat	security	permissions
+    [Tags]    chat	permissions
 
     # Create a test user
     ${test_user}=      Create Test User    api

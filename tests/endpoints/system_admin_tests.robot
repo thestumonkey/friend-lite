@@ -15,7 +15,7 @@ Suite Teardown   Suite Teardown
 
 Get Diarization Settings Test
     [Documentation]    Test getting diarization settings (admin only)
-    [Tags]    system	diarization	admin
+    [Tags]    infra	permissions
 
     ${response}=       GET On Session    api    /api/diarization-settings
     Should Be Equal As Integers    ${response.status_code}    200
@@ -25,7 +25,7 @@ Get Diarization Settings Test
 
 Save Diarization Settings Test
     [Documentation]    Test saving diarization settings (admin only)
-    [Tags]    system	diarization	admin
+    [Tags]    infra	permissions
 
     # First get current settings
     ${get_response}=   GET On Session    api   /api/diarization-settings
@@ -39,7 +39,7 @@ Save Diarization Settings Test
 
 Get Speaker Configuration Test
     [Documentation]    Test getting user's speaker configuration
-    [Tags]    system	speakers	user
+    [Tags]    infra	permissions
 
     ${response}=       GET On Session    api    /api/speaker-configuration
     Should Be Equal As Integers    ${response.status_code}    200
@@ -55,7 +55,7 @@ Get Speaker Configuration Test
 
 Update Speaker Configuration Test
     [Documentation]    Test updating user's speaker configuration
-    [Tags]    system	speakers	user
+    [Tags]    infra	permissions
 
     # Update with empty speaker list
     ${speakers}=       Create List
@@ -64,7 +64,7 @@ Update Speaker Configuration Test
 
 Get Enrolled Speakers Test
     [Documentation]    Test getting enrolled speakers from speaker recognition service
-    [Tags]    system	speakers	service
+    [Tags]    infra
      # Check if speaker service is actually available
     ${response}=       GET On Session    api   /api/speaker-service-status
     IF    ${response.json()}[service_available] == $False
@@ -83,7 +83,7 @@ Get Enrolled Speakers Test
 
 Get Speaker Service Status Test
     [Documentation]    Test checking speaker recognition service status (admin only)
-    [Tags]    system	speakers	service	admin
+    [Tags]    infra	permissions
 
     ${response}=       GET On Session    api    /api/speaker-service-status
     Should Be Equal As Integers    ${response.status_code}    200
@@ -103,7 +103,7 @@ Get Speaker Service Status Test
 
 Get Memory Config Raw Test
     [Documentation]    Test getting raw memory configuration (admin only)
-    [Tags]    system	memory	config	admin
+    [Tags]    infra	memory	permissions
 
     ${response}=       GET On Session    api    /api/admin/memory/config/raw
     Should Be Equal As Integers    ${response.status_code}    200
@@ -114,7 +114,7 @@ Get Memory Config Raw Test
 
 Validate Memory Config Test
     [Documentation]    Test validating memory configuration YAML (admin only)
-    [Tags]    system	memory	config	validation	admin
+    [Tags]    infra	memory	permissions
 
     # Test with valid YAML - use actual config from server
     ${get_response}=   GET On Session    api    /api/admin/memory/config/raw
@@ -133,14 +133,14 @@ Validate Memory Config Test
 
 Reload Memory Config Test
     [Documentation]    Test reloading memory configuration (admin only)
-    [Tags]    system	memory	config	reload	admin
+    [Tags]    infra	memory	permissions
 
     ${response}=       POST On Session    api    /api/admin/memory/config/reload
     Should Be Equal As Integers    ${response.status_code}    200
 
 Delete All User Memories Test
     [Documentation]    Test deleting all memories for current user
-    [Tags]    system	memory	delete	user
+    [Tags]    infra	memory	permissions
 
     ${response}=       DELETE On Session    api   /api/admin/memory/delete-all
     Should Be Equal As Integers    ${response.status_code}    200
@@ -151,7 +151,7 @@ Delete All User Memories Test
 
 Non-Admin Cannot Access Admin Endpoints Test
     [Documentation]    Test that non-admin users cannot access admin endpoints
-    [Tags]    system	security	negative
+    [Tags]    infra	permissions
 
     # Create a non-admin user
     ${test_user}=      Create Test User    api
@@ -175,7 +175,7 @@ Non-Admin Cannot Access Admin Endpoints Test
 
 Unauthorized System Access Test
     [Documentation]    Test that system endpoints require authentication
-    [Tags]    system	security	negative
+    [Tags]    infra	permissions
     Get Anonymous Session    anon_session
 
     # Test endpoints that require authentication
@@ -192,7 +192,7 @@ Unauthorized System Access Test
 
 Invalid System Operations Test
     [Documentation]    Test invalid operations on system endpoints
-    [Tags]    system	negative	validation
+    [Tags]    infra
 
     # Test saving invalid diarization settings
     ${invalid_settings}=    Create Dictionary    invalid_key=invalid_value
@@ -207,7 +207,7 @@ Invalid System Operations Test
 
 Memory Configuration Workflow Test
     [Documentation]    Test complete memory configuration workflow (admin only)
-    [Tags]    system	memory	config	processing	admin
+    [Tags]    infra	memory	permissions
 
     # 1. Get current config
     ${get_response}=   GET On Session    api    /api/admin/memory/config/raw
@@ -226,7 +226,7 @@ Memory Configuration Workflow Test
 
 Speaker Configuration Workflow Test
     [Documentation]    Test complete speaker configuration workflow
-    [Tags]    system	speakers	processing	user
+    [Tags]    infra	permissions
 
     # 1. Get current speaker configuration
     ${get_response}=   GET On Session    api    /api/speaker-configuration

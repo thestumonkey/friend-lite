@@ -2,153 +2,234 @@
 
 This document defines the standard tags used across the Friend-Lite test suite.
 
+## Simplified Tag Set
+
+Friend-Lite uses a **minimal, focused tag set** for test organization. Only 11 tags are permitted.
+
 ## Tag Format
 
 **IMPORTANT**: Tags must be **tab-separated**, not space-separated.
 
 ```robot
 # Correct - tabs between tags
-[Tags]    auth	negative
+[Tags]    permissions	conversation
 
 # Incorrect - spaces between tags
-[Tags]    auth negative
+[Tags]    permissions conversation
 ```
 
-## Core Tags by Category
+## Approved Tags
 
-### Test Type (20 uses)
-- `negative` - Error handling, invalid inputs, and failure scenarios
+### Core Component Tags
 
-### Security & Access (33 uses)
-- `security` (16) - Authentication and authorization tests
-- `auth` (5) - Authentication workflows
-- `admin` (12) - Admin-only operations
+**`permissions`** - Authentication, authorization, access control, user management
+- User login/logout
+- Admin operations
+- Role-based access control
+- Data isolation between users
+- Security tests
 
-### Core Components (66 uses)
-- `system` (15) - System-level operations and configuration
-- `queue` (14) - Job queue management (RQ workers, job monitoring)
-- `chat` (14) - Chat service and sessions
-- `user` (12) - User management and operations
-- `conversation` (12) - Conversation management and transcription
-- `memory` (11) - Memory extraction, storage, and search
+**`conversation`** - Conversation management and transcription
+- Conversation CRUD operations
+- Transcript processing and versioning
+- Speaker diarization
+- Conversation metadata
 
-### Processing & Services (28 uses)
-- `session` (9) - Session management
-- `health` (9) - Health checks and readiness endpoints
-- `integration` (6) - End-to-end integration tests
-- `speaker` (5) - Speaker recognition and diarization
-- `rq` (5) - Redis Queue specific operations
+**`memory`** - Memory extraction, storage, and retrieval
+- Memory creation from conversations
+- Semantic search
+- Memory versioning
+- Memory reprocessing
 
-### Technical Features (28 uses)
-- `websocket` (4) - WebSocket streaming
-- `validation` (4) - Input validation
-- `streaming` (4) - Real-time stream processing
-- `processing` (4) - Data processing workflows
-- `config` (4) - Configuration management
-- `statistics` (3) - Statistics and metrics endpoints
-- `service` (3) - Service management
-- `pagination` (3) - Paginated API responses
-- `permissions` (3) - Data isolation and permission tests
-- `client` (3) - Client connection management
+**`chat`** - Chat service and sessions
+- Chat session management
+- Message handling
+- Chat history
+- Chat statistics
 
-### Specialized (14 uses)
-- `versioning` (2) - Version management for transcripts/memories
-- `segment` (2) - Audio segment handling
-- `diarization` (2) - Speaker diarization
-- `cropping` (2) - Audio cropping
-- `audio` (2) - Audio processing
+**`queue`** - Job queue management and monitoring
+- RQ worker status
+- Job tracking
+- Queue health
+- Background task processing
 
-### Single-Use Specialized Tags
-These tags are used for very specific test scenarios:
-- `upload`, `update`, `crud`, `delete` - CRUD operations
-- `todo`, `timeout`, `stress` - Edge cases
-- `speech`, `search`, `list` - Specific operations
-- `restart`, `reload` - Service management
-- `multiple`, `metrics`, `message`, `manager` - Various features
-- `invalid`, `inactivity`, `enqueue` - Error scenarios
-- `e2e`, `detailed`, `debug` - Test types
-- `critical`, `connection`, `close` - System operations
-- `active`, `activation`, `accuracy` - State management
+**`health`** - System health and readiness checks
+- Health endpoints
+- Service status
+- Readiness probes
+- System metrics
 
-## Tag Consolidation Rules
+**`infra`** - Infrastructure and system-level operations
+- Service configuration
+- System administration
+- Client management
+- General system operations
 
-### Prohibited Synonyms
-To prevent tag duplication, these terms have been consolidated:
+### Audio Processing Tags
 
-**DO NOT create new tags with these terms:**
-- ❌ `positive` - Removed (default assumption)
-- ❌ `users` → Use `user` instead
-- ❌ `login` → Use `auth` instead
-- ❌ `create`, `delete`, `update`, `upload` → Use `crud` if needed, or be specific
-- ❌ `version`, `versions` → Use `versioning` instead
-- ❌ `stats` → Use `statistics` instead
-- ❌ `status`, `readiness` → Use `health` instead
-- ❌ `jobs` → Use `queue` instead
-- ❌ `reprocess`, `workflow`, `pipeline` → Use `processing` instead
-- ❌ `messages` → Use `message` instead
-- ❌ `isolation` → Use `permissions` instead
-- ❌ `notfound`, `persistence`, `individual` - Removed (too specific)
-- ❌ `speed-fast`, `speed-mid`, `speed-long` - Removed (execution time tags not needed)
+**`audio-upload`** - Audio file upload and batch processing
+- File upload endpoints
+- Batch audio processing
+- Audio file CRUD operations
 
-### When Adding New Tags
+**`audio-batch`** - Batch audio processing operations
+- Multiple file processing
+- Batch job management
 
-Before adding a new tag, check:
+**`audio-streaming`** - Real-time audio streaming
+- WebSocket audio streaming
+- Real-time transcription
+- Live audio processing
 
-1. **Does a similar tag already exist?** Review this document first
-2. **Is it a synonym?** Use the consolidated version instead
-3. **Is it single-use?** Consider if a more general existing tag would work
-4. **Is it descriptive?** Tag should clearly indicate what aspect is being tested
+### Integration Tags
 
-### Tag Naming Guidelines
+**`e2e`** - End-to-end integration tests
+- Multi-component workflows
+- Full pipeline testing
+- Cross-service integration
 
-- **Use lowercase** - All tags are lowercase
-- **Be concise** - Single words preferred (e.g., `auth` not `authentication`)
-- **Be specific** - But not too specific (avoid test-specific tags)
-- **Be consistent** - Check existing tags before creating new ones
-- **Prefer nouns** - `memory`, `queue`, `session` not `memorize`, `queuing`
-- **Avoid redundancy** - Don't tag with both `auth` and `security` unless both aspects are tested
+## Tag Usage Guidelines
 
-## Tag Usage Examples
+### Single Tag per Test (Preferred)
 
-### Good Examples
+Most tests should have **one primary tag** indicating the main component being tested:
 
 ```robot
-# Clear, concise, uses existing tags
-[Tags]    auth	negative
+# Authentication test
+[Tags]    permissions
 
-# Multiple aspects of a test
-[Tags]    conversation	memory	processing
+# Memory search test
+[Tags]    memory
 
-# Security test for admin endpoints
-[Tags]    admin	security	negative
+# WebSocket streaming test
+[Tags]    audio-streaming
 ```
 
-### Bad Examples
+### Multiple Tags (When Necessary)
+
+Use 2-3 tags only when testing interactions between components:
 
 ```robot
-# DON'T use spaces between tags
-[Tags]    auth negative
+# Conversation creates memories
+[Tags]    conversation	memory
 
-# DON'T create synonyms
-[Tags]    authentication	login	users
+# Admin managing queues
+[Tags]    permissions	queue
 
-# DON'T use overly specific tags
-[Tags]    test_login_with_invalid_email_format
-
-# DON'T use positive (implied)
-[Tags]    auth	positive
+# E2E audio upload to memory
+[Tags]    e2e	audio-upload	memory
 ```
 
-## Updating This Document
+### Tag Selection Decision Tree
 
-When you add, remove, or consolidate tags:
+1. **Is it about users/auth/security?** → `permissions`
+2. **Is it about audio upload/files?** → `audio-upload`
+3. **Is it about WebSocket/streaming?** → `audio-streaming`
+4. **Is it about conversations?** → `conversation`
+5. **Is it about memories?** → `memory`
+6. **Is it about chat?** → `chat`
+7. **Is it about queues/jobs?** → `queue`
+8. **Is it about health checks?** → `health`
+9. **Is it end-to-end?** → `e2e`
+10. **Is it infrastructure/config?** → `infra`
 
-1. Update the relevant section above
-2. Update the "Prohibited Synonyms" section if needed
-3. Update tag counts if they change significantly
-4. Commit changes with a clear message explaining the tag changes
+### Examples
+
+```robot
+# Good - Clear single tag
+[Tags]    permissions
+[Tags]    conversation
+[Tags]    memory
+
+# Good - Component interaction
+[Tags]    conversation	memory
+[Tags]    permissions	queue
+
+# Good - E2E with components
+[Tags]    e2e	audio-streaming	conversation
+
+# Bad - Too many tags
+[Tags]    permissions	conversation	memory	queue	health
+
+# Bad - Use infra instead
+[Tags]    configuration
+[Tags]    system-admin
+
+# Bad - Non-existent tags
+[Tags]    negative
+[Tags]    positive
+[Tags]    security  # Use 'permissions' instead
+```
+
+## Prohibited Tags
+
+**DO NOT create or use any tags other than the 11 approved tags above.**
+
+Commonly misused tags that should NOT be used:
+- ❌ `positive`, `negative` - Test outcome is in the results, not tags
+- ❌ `security`, `auth`, `admin`, `user` - Use `permissions` instead
+- ❌ `websocket`, `streaming` - Use `audio-streaming` instead
+- ❌ `upload`, `crud` - Use `audio-upload` instead
+- ❌ `integration` - Use `e2e` instead
+- ❌ `system`, `config`, `service` - Use `infra` instead
+- ❌ `rq`, `jobs`, `worker` - Use `queue` instead
+- ❌ Any other tags not in the approved list above
+
+## Running Tests by Tag
+
+```bash
+# Run all permission tests
+robot --include permissions tests/
+
+# Run conversation and memory tests
+robot --include conversationORmemory tests/
+
+# Run only E2E tests
+robot --include e2e tests/
+
+# Run everything except E2E
+robot --exclude e2e tests/
+
+# Run audio-related tests
+robot --include audio-upload --include audio-streaming tests/
+```
+
+## Updating Tags
+
+### Before Adding a New Tag
+
+**STOP!** Ask yourself:
+1. Can I use one of the existing 11 tags?
+2. Is this tag really necessary for test organization?
+3. Have I checked with the team?
+
+**New tags require team approval and must be added to this document first.**
+
+### Changing Existing Tags
+
+When updating tags across test files:
+1. Update all affected test files
+2. Update this document (tags.md)
+3. Update TESTING_GUIDELINES.md if rules changed
+4. Document the change in the commit message
+
+## Tag Statistics
+
+Current distribution (approximate):
+- `permissions`: 38 tests
+- `infra`: 18 tests
+- `chat`: 14 tests
+- `queue`: 18 tests
+- `e2e`: 14 tests
+- `conversation`: 12 tests
+- `memory`: 11 tests
+- `health`: 9 tests
+- `audio-streaming`: 4 tests
+- `audio-upload`: 3 tests
+- `audio-batch`: 0 tests (reserved for future use)
 
 ---
 
 **Last Updated:** 2025-01-23
-**Total Unique Tags:** ~60 (after consolidation)
+**Total Approved Tags:** 11
+**Enforcement:** Mandatory - no exceptions

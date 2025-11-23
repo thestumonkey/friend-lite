@@ -103,42 +103,58 @@ Test Name Should Describe Business Scenario
 2. Verify no synonym exists for your intended tag
 3. Use the consolidated tag name if a synonym exists
 
-**Prohibited Tag Synonyms:**
-- ❌ `positive` - Removed (default assumption)
-- ❌ `users` → Use `user`
-- ❌ `login` → Use `auth`
-- ❌ `version`, `versions` → Use `versioning`
-- ❌ `stats` → Use `statistics`
-- ❌ `status`, `readiness` → Use `health`
-- ❌ `jobs` → Use `queue`
-- ❌ `isolation` → Use `permissions`
+**Approved Tags (ONLY these 11 tags are permitted):**
+1. `permissions` - Authentication, authorization, access control
+2. `conversation` - Conversation management and transcription
+3. `memory` - Memory extraction, storage, and retrieval
+4. `chat` - Chat service and sessions
+5. `queue` - Job queue management and monitoring
+6. `health` - System health and readiness checks
+7. `infra` - Infrastructure and system-level operations
+8. `audio-upload` - Audio file upload and batch processing
+9. `audio-batch` - Batch audio processing operations
+10. `audio-streaming` - Real-time audio streaming
+11. `e2e` - End-to-end integration tests
 
-**Full list:** See **[@tests/tags.md](tags.md)**
+**NO other tags are permitted.** See **[@tests/tags.md](tags.md)** for detailed descriptions.
 
 #### Tag Selection Guidelines
 
-1. **Check existing tags first** - Review tags.md before creating new tags
-2. **Use specific over general** - `auth` + `negative` is better than just `security`
-3. **Avoid redundancy** - Don't use both `auth` and `security` unless testing both aspects
-4. **Single words preferred** - `auth` not `authentication`
-5. **Lowercase only** - All tags must be lowercase
-6. **2-4 tags per test** - More than 4 tags usually indicates poor tag selection
+1. **Use single tag when possible** - Most tests should have ONE primary tag
+2. **Use 2-3 tags for interactions** - Only when testing component interactions
+3. **Never use more than 3 tags** - If you need more, the test is too broad
+4. **Lowercase only** - All tags must be lowercase
+5. **No custom tags** - Only the 11 approved tags are permitted
 
-#### Common Tag Combinations
+#### Tag Selection Decision Tree
+
+Ask yourself:
+1. Is it about users/auth/security? → `permissions`
+2. Is it about audio upload/files? → `audio-upload`
+3. Is it about WebSocket/streaming? → `audio-streaming`
+4. Is it about conversations? → `conversation`
+5. Is it about memories? → `memory`
+6. Is it about chat? → `chat`
+7. Is it about queues/jobs? → `queue`
+8. Is it about health checks? → `health`
+9. Is it end-to-end? → `e2e`
+10. Is it infrastructure/config? → `infra`
+
+#### Common Tag Patterns
 
 ```robot
-# Authentication tests
-[Tags]    auth	negative          # Failed login
-[Tags]    auth	admin             # Admin authentication
+# Single tag (preferred)
+[Tags]    permissions          # Auth test
+[Tags]    conversation         # Conversation CRUD
+[Tags]    memory              # Memory search
 
-# CRUD operations
-[Tags]    user	crud	negative  # Failed user creation
+# Component interaction (2 tags)
+[Tags]    conversation	memory
+[Tags]    permissions	queue
 
-# Integration tests
-[Tags]    integration	memory	processing
-
-# Security tests
-[Tags]    admin	security	negative
+# E2E with components (2-3 tags)
+[Tags]    e2e	audio-streaming
+[Tags]    e2e	audio-upload	memory
 ```
 
 #### Updating Tags

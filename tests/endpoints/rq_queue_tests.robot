@@ -60,7 +60,7 @@ Restart Backend Service
 *** Test Cases ***
 Test RQ Job Enqueuing
     [Documentation]    Test that jobs can be enqueued in Redis
-    [Tags]    rq	enqueue
+    [Tags]    queue
 
     # Check initial queue state
     ${initial_stats}=    Check Queue Stats
@@ -82,7 +82,7 @@ Test RQ Job Enqueuing
 
 Test Job Persistence Through Backend Restart
     [Documentation]    Test that RQ jobs persist when backend service restarts
-    [Tags]    rq	restart	critical
+    [Tags]    queue
 
     # Find test conversation
     ${conversation}=    Find Test Conversation
@@ -112,7 +112,7 @@ Test Job Persistence Through Backend Restart
 
 Test Multiple Jobs Persistence
     [Documentation]    Test that multiple jobs persist through restart
-    [Tags]    rq	multiple	stress
+    [Tags]    queue
 
     # Find test conversation
     ${conversation}=    Find Test Conversation
@@ -148,7 +148,7 @@ Test Multiple Jobs Persistence
 
 Test Queue Stats Accuracy
     [Documentation]    Test that queue statistics accurately reflect job states
-    [Tags]    rq	statistics	accuracy
+    [Tags]    queue
 
     # Get baseline stats
     ${initial_stats}=    Check Queue Stats
@@ -179,7 +179,7 @@ Test Queue Stats Accuracy
 
 Test Queue API Authentication
     [Documentation]    Test that queue endpoints properly enforce authentication
-    [Tags]    rq	security	auth	negative
+    [Tags]    permissions
 
     # Create anonymous session (no authentication)
     Get Anonymous Session    anon_session

@@ -78,7 +78,7 @@ Health Check Test
 
 Auth Health Check Test
     [Documentation]    Test authentication service health check
-    [Tags]    auth	health
+    [Tags]    permissions	health
     Get Anonymous Session    session
 
     ${response}=    GET On Session    session   /api/auth/health
@@ -134,7 +134,7 @@ Chat Health Check Test
 
 System Metrics Test
     [Documentation]    Test system metrics endpoint (admin only)
-    [Tags]    metrics	admin
+    [Tags]    permissions
 
     ${response}=       GET On Session    api    /api/metrics
     Should Be Equal As Integers    ${response.status_code}    200
@@ -145,7 +145,7 @@ System Metrics Test
 
 Queue Stats Test
     [Documentation]    Test queue stats endpoint
-    [Tags]    queue	statistics
+    [Tags]    queue
 
     ${response}=       GET On Session    api    /api/queue/stats
     Should Be Equal As Integers    ${response.status_code}    200
@@ -161,7 +161,7 @@ Queue Stats Test
 
 Health Check Service Details Test
     [Documentation]    Test detailed service health information including Redis workers
-    [Tags]    health	services	detailed
+    [Tags]    health
     Get Anonymous Session    session
     ${response}=    GET On Session    session    /health
     Should Be Equal As Integers    ${response.status_code}    200
@@ -193,7 +193,7 @@ Health Check Service Details Test
 
 Non-Admin Cannot Access Admin Endpoints Test
     [Documentation]    Test that non-admin users cannot access admin health endpoints
-    [Tags]    health	security	negative
+    [Tags]    health	permissions
 
     # Create a non-admin user
     ${test_user}=      Create Test User    api
@@ -208,7 +208,7 @@ Non-Admin Cannot Access Admin Endpoints Test
 
 Unauthorized Health Access Test
     [Documentation]    Test health endpoints that require authentication
-    [Tags]    health	security	negative
+    [Tags]    health	permissions
     Get Anonymous Session    session
 
     # Admin-only endpoints should require authentication
