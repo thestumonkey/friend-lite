@@ -24,11 +24,24 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:latest
+          network=host
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ hashFiles('backends/advanced/Dockerfile', 'backends/advanced/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
+        cache: 'pip'
 
     - name: Install Robot Framework and dependencies
       run: |
@@ -118,8 +131,15 @@ jobs:
         ls -la memory_config.yaml
 
         # Start backend (depends on infrastructure)
-        echo "Starting backend (forcing rebuild to include latest code)..."
-        DOCKER_BUILDKIT=1 docker compose -f docker-compose-ci.yml build friend-backend-test 2>&1 | grep -v -E '(Preparing|Unpacking|Setting up|Selecting|processing|extracting)' || true
+        echo "Starting backend (building with cache)..."
+        DOCKER_BUILDKIT=1 docker compose -f docker-compose-ci.yml build \
+          --cache-from type=local,src=/tmp/.buildx-cache \
+          --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+          friend-backend-test 2>&1 | grep -v -E '(Preparing|Unpacking|Setting up|Selecting|processing|extracting)' || true
+
+        # Move cache to avoid growing indefinitely
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache || true
 
         # Debug: Check if file made it into the image
         echo "Checking if memory_config.yaml is in the built image..."
