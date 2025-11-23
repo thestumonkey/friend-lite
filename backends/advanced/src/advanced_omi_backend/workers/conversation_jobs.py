@@ -38,6 +38,7 @@ async def handle_end_of_conversation(
     last_result_count: int,
     timeout_triggered: bool,
     redis_client,
+    end_reason: str = "unknown",
 ) -> Dict[str, Any]:
     """
     Handle end-of-conversation cleanup and session restart logic.
@@ -46,6 +47,7 @@ async def handle_end_of_conversation(
     1. Clean up Redis streams and tracking keys
     2. Increment conversation count for the session
     3. Re-enqueue speech detection job if session is still active
+    4. Record conversation end reason in database
 
     Args:
         session_id: Stream session ID
@@ -56,9 +58,10 @@ async def handle_end_of_conversation(
         last_result_count: Number of transcription results processed
         timeout_triggered: Whether closure was due to inactivity timeout
         redis_client: Redis client instance
+        end_reason: Reason conversation ended (user_stopped, inactivity_timeout, websocket_disconnect, etc.)
 
     Returns:
-        Dict with conversation_id, conversation_count, final_result_count, runtime_seconds, timeout_triggered
+        Dict with conversation_id, conversation_count, final_result_count, runtime_seconds, timeout_triggered, end_reason
     """
     # Clean up Redis streams to prevent memory leaks
     try:
@@ -88,6 +91,25 @@ async def handle_end_of_conversation(
     current_conversation_key = f"conversation:current:{session_id}"
     await redis_client.delete(current_conversation_key)
     logger.info(f"🧹 Deleted conversation:current signal for session {session_id[:12]}")
+
+    # Update conversation in database with end reason and completion time
+    from advanced_omi_backend.models.conversation import Conversation
+    from datetime import datetime
+
+    conversation = await Conversation.find_one(Conversation.conversation_id == conversation_id)
+    if conversation:
+        # Convert string to enum
+        try:
+            conversation.end_reason = Conversation.EndReason(end_reason)
+        except ValueError:
+            logger.warning(f"⚠️ Invalid end_reason '{end_reason}', using UNKNOWN")
+            conversation.end_reason = Conversation.EndReason.UNKNOWN
+
+        conversation.completed_at = datetime.utcnow()
+        await conversation.save()
+        logger.info(f"💾 Saved conversation {conversation_id[:12]} end_reason: {conversation.end_reason}")
+    else:
+        logger.warning(f"⚠️ Conversation {conversation_id} not found for end reason tracking")
 
     # Increment conversation count for this session
     conversation_count_key = f"session:conversation_count:{session_id}"
@@ -151,6 +173,7 @@ async def handle_end_of_conversation(
         "final_result_count": last_result_count,
         "runtime_seconds": time.time() - start_time,
         "timeout_triggered": timeout_triggered,
+        "end_reason": end_reason,
     }
 
 
@@ -261,11 +284,26 @@ async def open_conversation_job(
         # Check if session is finalizing (set by producer when recording stops)
         if not finalize_received:
             status = await redis_client.hget(session_key, "status")
-            if status and status.decode() in ["finalizing", "complete"]:
+            status_str = status.decode() if status else None
+
+            if status_str in ["finalizing", "complete"]:
                 finalize_received = True
-                logger.info(
-                    f"🛑 Session finalizing, waiting for audio persistence job to complete..."
-                )
+
+                # Check if this was a WebSocket disconnect
+                completion_reason = await redis_client.hget(session_key, "completion_reason")
+                completion_reason_str = completion_reason.decode() if completion_reason else None
+
+                if completion_reason_str == "websocket_disconnect":
+                    logger.warning(
+                        f"🔌 WebSocket disconnected for session {session_id[:12]} - "
+                        f"ending conversation early"
+                    )
+                    timeout_triggered = False  # This is a disconnect, not a timeout
+                else:
+                    logger.info(
+                        f"🛑 Session finalizing (reason: {completion_reason_str or 'user_stopped'}), "
+                        f"waiting for audio persistence job to complete..."
+                    )
                 break  # Exit immediately when finalize signal received
 
         # Check max runtime timeout
@@ -361,6 +399,22 @@ async def open_conversation_job(
         f"✅ Conversation {conversation_id} updates complete, checking for meaningful speech..."
     )
 
+    # Determine end reason based on how we exited the loop
+    # Check session completion_reason from Redis
+    completion_reason = await redis_client.hget(session_key, "completion_reason")
+    completion_reason_str = completion_reason.decode() if completion_reason else None
+
+    if completion_reason_str == "websocket_disconnect":
+        end_reason = "websocket_disconnect"
+    elif timeout_triggered:
+        end_reason = "inactivity_timeout"
+    elif time.time() - start_time > max_runtime:
+        end_reason = "max_duration"
+    else:
+        end_reason = "user_stopped"
+
+    logger.info(f"📊 Conversation {conversation_id[:12]} end_reason determined: {end_reason}")
+
     # FINAL VALIDATION: Check if conversation has meaningful speech before post-processing
     # This prevents empty/noise-only conversations from being processed and saved
     combined = await aggregator.get_combined_results(session_id)
@@ -389,6 +443,7 @@ async def open_conversation_job(
             last_result_count=last_result_count,
             timeout_triggered=timeout_triggered,
             redis_client=redis_client,
+            end_reason=end_reason,
         )
 
     logger.info("✅ Conversation has meaningful speech, proceeding with post-processing")
@@ -417,6 +472,7 @@ async def open_conversation_job(
             last_result_count=last_result_count,
             timeout_triggered=timeout_triggered,
             redis_client=redis_client,
+            end_reason=end_reason,
         )
 
     logger.info(f"📁 Retrieved audio file path: {file_path}")
@@ -466,6 +522,7 @@ async def open_conversation_job(
         last_result_count=last_result_count,
         timeout_triggered=timeout_triggered,
         redis_client=redis_client,
+        end_reason=end_reason,
     )
 
 

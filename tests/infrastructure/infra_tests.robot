@@ -8,14 +8,20 @@ Documentation    Infrastructure Resilience Tests
 ...              - Worker registration loss (Redis restart/network issue)
 ...              - Service dependency failures
 ...              - Recovery mechanisms
+...              - WebSocket disconnect tracking
 Library          RequestsLibrary
 Library          Collections
 Library          Process
 Library          OperatingSystem
+Library          DateTime
 Resource         ../setup/setup_keywords.robot
 Resource         ../setup/teardown_keywords.robot
 Resource         ../resources/session_resources.robot
+Resource         ../resources/websocket_keywords.robot
+Resource         ../resources/conversation_keywords.robot
+Resource         ../resources/queue_keywords.robot
 Variables        ../setup/test_env.py
+Variables        ../setup/test_data.py
 Suite Setup      Infra Suite Setup
 Suite Teardown   Infra Suite Teardown
 
@@ -255,3 +261,60 @@ Redis Connection Resilience Test
     Log To Console    Redis status: ${status}
 
     Log To Console    \n✅ Redis health check working correctly
+
+WebSocket Disconnect Conversation End Reason Test
+    [Documentation]    Test that WebSocket disconnects are tracked with proper end_reason
+    ...
+    ...                This test simulates a Bluetooth/network dropout scenario:
+    ...                1. Start streaming audio and create conversation
+    ...                2. Abruptly close WebSocket (simulating disconnect)
+    ...                3. Verify job exits gracefully (no 3600s timeout)
+    ...                4. Verify conversation has end_reason='websocket_disconnect'
+    [Tags]    infra	audio-streaming
+
+    # Start audio stream and send chunks to trigger conversation
+    ${device_name}=    Set Variable    disconnect-test-device
+    ${stream_id}=    Open Audio Stream    device_name=${device_name}
+
+    # Send audio fast (no realtime pacing) to simulate disconnect before END signal
+    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_FILE}    num_chunks=100    realtime_pacing=${False}
+
+    # Wait for conversation job to be created and conversation_id to be populated
+    ${conv_jobs}=    Wait Until Keyword Succeeds    30s    2s
+    ...    Job Type Exists For Client    open_conversation    ${device_name}
+
+    # Wait for conversation_id in job meta (created asynchronously)
+    ${conversation_id}=    Set Variable    ${EMPTY}
+    FOR    ${i}    IN RANGE    30
+        ${conv_jobs}=    Get Jobs By Type And Client    open_conversation    ${device_name}
+        ${conv_job}=    Get Most Recent Job    ${conv_jobs}
+        ${conv_meta}=    Set Variable    ${conv_job}[meta]
+        ${conversation_id}=    Evaluate    $conv_meta.get('conversation_id', '')
+        IF    '${conversation_id}' != ''
+            BREAK
+        END
+        Sleep    1s
+    END
+    Should Not Be Empty    ${conversation_id}    msg=Conversation ID not found in job meta
+
+    # Simulate WebSocket disconnect (Bluetooth dropout)
+    Close Audio Stream    ${stream_id}
+
+    # Wait for job to complete (should be fast, not 3600s timeout)
+    Wait For Job Status    ${conv_job}[job_id]    completed    timeout=60s    interval=2s
+
+    # Wait for end_reason to be saved to database (retry with timeout)
+    FOR    ${i}    IN RANGE    20
+        Sleep    1s    reason=Wait for database update
+        ${conversation}=    Get Conversation By ID    ${conversation_id}
+        ${end_reason}=    Set Variable    ${conversation}[end_reason]
+        IF    '${end_reason}' != 'None'
+            BREAK
+        END
+    END
+
+    # Verify conversation was saved with correct end_reason
+    Should Be Equal As Strings    ${end_reason}    websocket_disconnect
+    Should Not Be Equal    ${conversation}[completed_at]    ${None}
+
+    [Teardown]    Run Keyword And Ignore Error    Close Audio Stream    ${stream_id}

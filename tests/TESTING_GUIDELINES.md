@@ -70,7 +70,7 @@ Each resource file should have a clear purpose and contain related keywords. Res
 *** Test Cases ***
 Test Name Should Describe Business Scenario
     [Documentation]    Clear explanation of what this test validates
-    [Tags]    relevant	tags
+    [Tags]            relevant    tags
 
     # Arrange - Setup test data and environment
     ${session}=    Get Admin API Session
@@ -82,87 +82,6 @@ Test Name Should Describe Business Scenario
     Should Be True    ${result}[successful] > 0    At least one file should be processed successfully
     Should Contain    ${result}[message]    processing completed    Processing should complete successfully
 ```
-
-### Test Tagging Guidelines
-
-**CRITICAL: Tags must be TAB-SEPARATED, not space-separated.**
-
-#### Tag Format
-```robot
-# Correct - tabs between tags
-[Tags]    auth	negative
-
-# Incorrect - spaces between tags
-[Tags]    auth negative
-```
-
-#### Tag Consolidation Rules
-
-**Before adding any new tag, you MUST:**
-1. Check **[@tests/tags.md](tags.md)** for existing tags
-2. Verify no synonym exists for your intended tag
-3. Use the consolidated tag name if a synonym exists
-
-**Approved Tags (ONLY these 11 tags are permitted):**
-1. `permissions` - Authentication, authorization, access control
-2. `conversation` - Conversation management and transcription
-3. `memory` - Memory extraction, storage, and retrieval
-4. `chat` - Chat service and sessions
-5. `queue` - Job queue management and monitoring
-6. `health` - System health and readiness checks
-7. `infra` - Infrastructure and system-level operations
-8. `audio-upload` - Audio file upload and batch processing
-9. `audio-batch` - Batch audio processing operations
-10. `audio-streaming` - Real-time audio streaming
-11. `e2e` - End-to-end integration tests
-
-**NO other tags are permitted.** See **[@tests/tags.md](tags.md)** for detailed descriptions.
-
-#### Tag Selection Guidelines
-
-1. **Use single tag when possible** - Most tests should have ONE primary tag
-2. **Use 2-3 tags for interactions** - Only when testing component interactions
-3. **Never use more than 3 tags** - If you need more, the test is too broad
-4. **Lowercase only** - All tags must be lowercase
-5. **No custom tags** - Only the 11 approved tags are permitted
-
-#### Tag Selection Decision Tree
-
-Ask yourself:
-1. Is it about users/auth/security? → `permissions`
-2. Is it about audio upload/files? → `audio-upload`
-3. Is it about WebSocket/streaming? → `audio-streaming`
-4. Is it about conversations? → `conversation`
-5. Is it about memories? → `memory`
-6. Is it about chat? → `chat`
-7. Is it about queues/jobs? → `queue`
-8. Is it about health checks? → `health`
-9. Is it end-to-end? → `e2e`
-10. Is it infrastructure/config? → `infra`
-
-#### Common Tag Patterns
-
-```robot
-# Single tag (preferred)
-[Tags]    permissions          # Auth test
-[Tags]    conversation         # Conversation CRUD
-[Tags]    memory              # Memory search
-
-# Component interaction (2 tags)
-[Tags]    conversation	memory
-[Tags]    permissions	queue
-
-# E2E with components (2-3 tags)
-[Tags]    e2e	audio-streaming
-[Tags]    e2e	audio-upload	memory
-```
-
-#### Updating Tags
-
-When consolidating or changing tags:
-1. Update all affected test files
-2. Update **[@tests/tags.md](tags.md)** with the changes
-3. Document the reason for the change in the commit message
 
 ### Resource File Documentation
 Each resource file should start with clear documentation:
@@ -232,11 +151,49 @@ ${conversations}=    Get User Conversations    ${token}
 
 ## Keywords vs Inline Code
 
+### BEFORE Writing Test Code: Check Existing Keywords
+
+**CRITICAL: Always review existing resource files before writing any test code.**
+
+Before implementing ANY test logic:
+1. **Open and scan ALL relevant resource files** for existing keywords
+2. **Read keyword documentation** to understand what they do
+3. **Look for similar patterns** - if your test needs to do something common (like "create conversation", "wait for job", "send audio"), a keyword likely exists
+4. **Check the keyword's dependencies** - keywords often call other helper keywords you should also use
+
+**Why this matters:**
+- Prevents code duplication and maintenance burden
+- Ensures consistent test patterns across the suite
+- Leverages battle-tested, optimized implementations
+- Reduces test complexity and improves readability
+
+**How to do this:**
+```robot
+# Bad - Writing inline code without checking
+${jobs}=    Get Jobs By Type And Client    open_conversation    ${device}
+${count}=    Get Length    ${jobs}
+# ... manual logic to wait for new job ...
+
+# Good - Using existing keyword
+${jobs}=    Wait Until Keyword Succeeds    30s    2s
+...    Wait For New Job To Appear    open_conversation    ${device}    ${baseline_count}
+```
+
+**Resource Files to Check (based on your test domain):**
+- `websocket_keywords.robot` - WebSocket streaming, audio chunks, conversation creation
+- `conversation_keywords.robot` - Conversation CRUD, transcript operations
+- `queue_keywords.robot` - Job tracking, waiting for job states, queue monitoring
+- `memory_keywords.robot` - Memory operations, search, retrieval
+- `audio_keywords.robot` - Audio file handling, processing
+- `session_resources.robot` - Authentication, API sessions
+- `integration_keywords.robot` - Complex multi-step workflows
+
 ### When to Create Keywords
 - Reusable operations that are used across multiple tests or suites
 - Complex multi-step setup or teardown operations
 - Operations that encapsulate business logic or domain concepts
 - Operations that interact with external systems (APIs, databases, files)
+- **ONLY after confirming no existing keyword does what you need**
 
 ### When to Keep Code Inline
 - Verification steps (assertions) - these should almost always be inline in tests

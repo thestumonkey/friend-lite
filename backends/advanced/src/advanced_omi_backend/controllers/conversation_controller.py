@@ -108,6 +108,8 @@ async def get_conversation(conversation_id: str, user: User):
             "deleted": conversation.deleted,
             "deletion_reason": conversation.deletion_reason,
             "deleted_at": conversation.deleted_at.isoformat() if conversation.deleted_at else None,
+            "end_reason": conversation.end_reason.value if conversation.end_reason else None,
+            "completed_at": conversation.completed_at.isoformat() if conversation.completed_at else None,
             "title": conversation.title,
             "summary": conversation.summary,
             "detailed_summary": conversation.detailed_summary,

@@ -1,6 +1,5 @@
 **/__pycache__
 *.wav
-!tests/test_assets/*.wav
 **/*.env
 !**/.env.template
 **/memory_config.yaml
@@ -77,3 +76,8 @@ extras/openmemory-mcp/data/*
 backends/advanced/nginx.conf
 backends/advanced/Caddyfile
 
+app/ios/Pods
+results
+log.html
+output.xml
+report.html

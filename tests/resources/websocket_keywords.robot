@@ -75,7 +75,7 @@ Open Audio Stream
 
 Send Audio Chunks To Stream
     [Documentation]    Send audio chunks from a file to an open stream
-    [Arguments]    ${stream_id}    ${audio_file_path}    ${num_chunks}=${None}
+    [Arguments]    ${stream_id}    ${audio_file_path}    ${num_chunks}=${None}    ${realtime_pacing}=False
 
     File Should Exist    ${audio_file_path}
 
@@ -84,6 +84,7 @@ Send Audio Chunks To Stream
     ...    stream_id=${stream_id}
     ...    wav_path=${audio_file_path}
     ...    num_chunks=${num_chunks}
+    ...    realtime_pacing=${realtime_pacing}
 
     Log    Sent ${chunks_sent} chunks to stream ${stream_id}
     RETURN    ${chunks_sent}

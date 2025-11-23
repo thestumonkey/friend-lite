@@ -37,6 +37,15 @@ class Conversation(Document):
         COMPLETED = "completed"  # All jobs succeeded
         FAILED = "failed"  # One or more jobs failed
 
+    class EndReason(str, Enum):
+        """Reason for conversation ending."""
+        USER_STOPPED = "user_stopped"  # User manually stopped recording
+        INACTIVITY_TIMEOUT = "inactivity_timeout"  # No speech detected for threshold period
+        WEBSOCKET_DISCONNECT = "websocket_disconnect"  # Connection lost (Bluetooth, network, etc.)
+        MAX_DURATION = "max_duration"  # Hit maximum conversation duration
+        ERROR = "error"  # Processing error forced conversation end
+        UNKNOWN = "unknown"  # Unknown or legacy reason
+
     # Nested Models
     class SpeakerSegment(BaseModel):
         """Individual speaker segment in a transcript."""
@@ -85,6 +94,10 @@ class Conversation(Document):
     deleted: bool = Field(False, description="Whether this conversation was deleted due to processing failure")
     deletion_reason: Optional[str] = Field(None, description="Reason for deletion (no_meaningful_speech, audio_file_not_ready, etc.)")
     deleted_at: Optional[datetime] = Field(None, description="When the conversation was marked as deleted")
+
+    # Conversation completion tracking
+    end_reason: Optional["Conversation.EndReason"] = Field(None, description="Reason why the conversation ended")
+    completed_at: Optional[datetime] = Field(None, description="When the conversation was completed/closed")
 
     # Summary fields (auto-generated from transcript)
     title: Optional[str] = Field(None, description="Auto-generated conversation title")
