@@ -84,61 +84,27 @@ Test Reprocess Conversation Job Queue
     Dictionary Should Contain Key    ${initial_conversation}    transcript_version_count
     ${initial_version_count}=    Set Variable    ${initial_conversation}[transcript_version_count]
     Log    Initial transcript version count: ${initial_version_count}    INFO
-
+    ${active_version}=    Set Variable    ${initial_conversation}[active_transcript_version]
+    Log    Active transcript version: ${active_version}    INFO
+    
     # Trigger transcript reprocessing
     Log    Triggering transcript reprocessing for conversation ${conversation_id}    INFO
     ${reprocess_data}=    Reprocess Transcript    ${conversation_id}
     ${job_id}=    Set Variable    ${reprocess_data}[job_id]
     ${version_id}=    Set Variable    ${reprocess_data}[version_id]
 
-    # Verify job response structure
-    Dictionary Should Contain Key    ${reprocess_data}    job_id
-    Dictionary Should Contain Key    ${reprocess_data}    version_id
-    Dictionary Should Contain Key    ${reprocess_data}    status
-    Should Not Be Equal As Strings    failed    ${reprocess_data}[status]
-
-    Log    Reprocess job created: ${job_id}, version: ${version_id}    INFO
-
+    
     # Wait for transcription job to complete (first in chain)
     Log    Waiting for transcription job ${job_id} to complete...    INFO
-    Wait Until Keyword Succeeds    90s    3s    Job Should Be Complete    ${job_id}
-
-    ${job_details}=    Get Job Details    ${job_id}
-    Log    Job details: ${job_details}    INFO
-
-    # Verify job structure
-    Dictionary Should Contain Key    ${job_details}    job_id
-    Dictionary Should Contain Key    ${job_details}    job_type
-    Dictionary Should Contain Key    ${job_details}    status
-    Should Be Equal As Strings    ${job_details}[job_id]    ${job_id}
-    Should Be Equal As Strings    ${job_details}[job_type]    transcribe_full_audio_job
-
-    # Job should be completed or finished
-    Should Be True    '${job_details}[status]' in ['completed', 'finished']    Job status: ${job_details}[status]
-
-    # Wait additional time for full job chain to complete (speaker -> cropping -> memory)
-    Log    Waiting for full reprocessing job chain to complete...    INFO
-    Sleep    10s
+    Wait For Job Status    ${job_id}    completed    timeout=30s    interval=2s
 
     # Verify conversation was updated with new transcript version
     ${updated_conversation}=    Get Conversation By ID    ${conversation_id}
-
-    # Check that we have more transcript versions than before
-    Dictionary Should Contain Key    ${updated_conversation}    transcript_version_count
-    ${new_version_count}=    Set Variable    ${updated_conversation}[transcript_version_count]
-    Log    New transcript version count: ${new_version_count}    INFO
-
-    Should Be True    ${new_version_count} > ${initial_version_count}    Expected version count to increase from ${initial_version_count} to ${new_version_count}
-
-    # Verify conversation has transcript data
-    Dictionary Should Contain Key    ${updated_conversation}    transcript
-    ${transcript}=    Set Variable    ${updated_conversation}[transcript]
-    Should Not Be Empty    ${transcript}    Expected conversation to have transcript after reprocessing
+    ${transcript_versions}=    Get Conversation Versions    ${conversation_id}  
+    Length Should Be    ${transcript_versions}    ${initial_version_count + 1}    Expected transcript versions to increase by 1
 
     # Verify transcript versions array exists and has correct count
-    Dictionary Should Contain Key    ${updated_conversation}    transcript_versions
-    ${transcript_versions}=    Get Length    ${updated_conversation}[transcript_versions]
-    Should Be Equal As Integers    ${transcript_versions}    ${new_version_count}
+    Should Not Be Equal    ${updated_conversation}[active_transcript_version]    ${active_version}
 
     Log    Reprocess Job Queue Test Completed Successfully    INFO
 

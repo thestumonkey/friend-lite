@@ -117,6 +117,8 @@ async def get_conversation(conversation_id: str, user: User):
             "segment_count": conversation.segment_count,
             "memory_count": conversation.memory_count,
             "has_memory": conversation.has_memory,
+            "active_transcript_version": conversation.active_transcript_version,
+            "active_memory_version": conversation.active_memory_version,
             "transcript_version_count": conversation.transcript_version_count,
             "memory_version_count": conversation.memory_version_count,
         }
