@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
   pages: write
   id-token: write
 
@@ -282,17 +283,77 @@ jobs:
       uses: actions/deploy-pages@v4
       id: deployment
 
-    - name: Add deployment info to summary
+    - name: Generate test summary
       if: always() && steps.check_results.outputs.results_exist == 'true'
+      id: test_summary
       run: |
-        echo "## 📊 Test Reports Published" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Your test reports are available at:" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- [📋 Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/report.html)" >> $GITHUB_STEP_SUMMARY
-        echo "- [📝 Detailed Log](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/log.html)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Deployment URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+        # Parse test results
+        python3 << 'PYTHON_SCRIPT' > test_summary.txt
+        import xml.etree.ElementTree as ET
+        tree = ET.parse('tests/results/output.xml')
+        root = tree.getroot()
+        stats = root.find('.//total/stat')
+        if stats is not None:
+            passed = stats.get("pass", "0")
+            failed = stats.get("fail", "0")
+            total = int(passed) + int(failed)
+            print(f"PASSED={passed}")
+            print(f"FAILED={failed}")
+            print(f"TOTAL={total}")
+        PYTHON_SCRIPT
+
+        # Source the variables
+        source test_summary.txt
+
+        # Set outputs
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+        echo "failed=$FAILED" >> $GITHUB_OUTPUT
+        echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+    - name: Post PR comment with test results
+      if: always() && steps.check_results.outputs.results_exist == 'true'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const passed = '${{ steps.test_summary.outputs.passed }}';
+          const failed = '${{ steps.test_summary.outputs.failed }}';
+          const total = '${{ steps.test_summary.outputs.total }}';
+          const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+          const pagesUrl = '${{ steps.deployment.outputs.page_url }}';
+
+          const status = failed === '0' ? '✅ All tests passed!' : '❌ Some tests failed';
+          const emoji = failed === '0' ? '🎉' : '⚠️';
+
+          const comment = `## ${emoji} Robot Framework Test Results
+
+**Status**: ${status}
+
+| Metric | Count |
+|--------|-------|
+| ✅ Passed | ${passed} |
+| ❌ Failed | ${failed} |
+| 📊 Total | ${total} |
+
+### 📊 View Reports
+
+**GitHub Pages (Live Reports):**
+- [📋 Test Report](${pagesUrl}report.html)
+- [📝 Detailed Log](${pagesUrl}log.html)
+
+**Download Artifacts:**
+- [robot-test-reports-html](${runUrl}) - HTML reports
+- [robot-test-results-xml](${runUrl}) - XML output
+
+---
+*[View full workflow run](${runUrl})*`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
 
     - name: Upload Robot Framework XML output
       if: always() && steps.check_results.outputs.results_exist == 'true'
