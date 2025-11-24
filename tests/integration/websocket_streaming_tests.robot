@@ -61,10 +61,12 @@ Conversation Job Created After Speech Detection
     ${stream_id}=    Open Audio Stream    device_name=ws-conv
 
     # Send enough audio to trigger speech detection (test audio has speech)
-    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=100
+    # Test audio is 4 minutes long at 16kHz, sending 200 chunks ensures enough speech
+    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=200
 
-    # Wait for open_conversation job to be created first
-    Wait Until Keyword Succeeds    30s    2s
+    # Wait for open_conversation job to be created (transcription + speech analysis takes time)
+    # Deepgram/OpenAI API calls + job processing can take 30-60s with queue
+    Wait Until Keyword Succeeds    60s    3s
     ...    Job Type Exists For Client    open_conversation    ws-conv
 
     Log To Console    Open conversation job created after speech detection
@@ -89,10 +91,10 @@ Conversation Closes On Inactivity Timeout And Restarts Speech Detection
 
     # Open stream and send enough audio to trigger speech detection and conversation
     ${stream_id}=    Open Audio Stream    device_name=${device_name}
-    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=100
+    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=200
 
-    # Wait for conversation job to be created
-    ${conv_jobs}=    Wait Until Keyword Succeeds    15s    2s
+    # Wait for conversation job to be created (transcription + speech analysis takes time)
+    ${conv_jobs}=    Wait Until Keyword Succeeds    60s    3s
     ...    Job Type Exists For Client    open_conversation    ${device_name}
     ${conv_job}=    Set Variable    ${conv_jobs}[0]
     ${conv_job_id}=    Set Variable    ${conv_job}[job_id]

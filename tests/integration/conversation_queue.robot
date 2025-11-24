@@ -77,7 +77,7 @@ Test Reprocess Conversation Job Queue
 
     # Wait for initial upload processing to complete (transcription job chain)
     Log    Waiting for initial conversation processing to complete...    INFO
-    Sleep    5s    # Give time for initial job chain (transcription -> speaker -> cropping -> memory)
+    Sleep    10s    # Give time for initial job chain (transcription -> speaker -> cropping -> memory)
 
     # Get conversation to verify initial state
     ${initial_conversation}=    Get Conversation By ID    ${conversation_id}
@@ -86,17 +86,17 @@ Test Reprocess Conversation Job Queue
     Log    Initial transcript version count: ${initial_version_count}    INFO
     ${active_version}=    Set Variable    ${initial_conversation}[active_transcript_version]
     Log    Active transcript version: ${active_version}    INFO
-    
+
     # Trigger transcript reprocessing
     Log    Triggering transcript reprocessing for conversation ${conversation_id}    INFO
     ${reprocess_data}=    Reprocess Transcript    ${conversation_id}
     ${job_id}=    Set Variable    ${reprocess_data}[job_id]
     ${version_id}=    Set Variable    ${reprocess_data}[version_id]
 
-    
-    # Wait for transcription job to complete (first in chain)
+
+    # Wait for transcription job to complete (Deepgram API + processing takes time in CI)
     Log    Waiting for transcription job ${job_id} to complete...    INFO
-    Wait For Job Status    ${job_id}    completed    timeout=30s    interval=2s
+    Wait For Job Status    ${job_id}    completed    timeout=60s    interval=3s
 
     # Verify conversation was updated with new transcript version
     ${updated_conversation}=    Get Conversation By ID    ${conversation_id}

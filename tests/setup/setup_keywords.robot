@@ -54,7 +54,13 @@ Dev Mode Setup
         Clear Test Databases
     ELSE
         Log To Console    ⚠ Containers not running, starting them...
-        Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    up    -d    shell=True
+
+        # Clean up any stopped/stuck containers first
+        Run Process    docker    compose    -f    docker-compose-ci.yml    down    -v    cwd=backends/advanced    shell=True
+        Run Process    docker    rm    -f    advanced-mongo-test-1    advanced-redis-test-1    advanced-qdrant-test-1    advanced-friend-backend-test-1    advanced-workers-test-1    shell=True
+
+        # Start containers
+        Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    cwd=backends/advanced    shell=True
 
         Log To Console    Waiting for services to be ready...
         Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
@@ -68,7 +74,7 @@ Dev Mode Setup With Rebuild
     Log To Console    \n=== Dev Mode Setup (with rebuild) ===
     Log To Console    Rebuilding containers with latest code...
 
-    Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    up    -d    --build    shell=True
+    Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
 
     Log To Console    Waiting for services to be ready...
     Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
@@ -82,13 +88,11 @@ Prod Mode Setup
     Log To Console    \n=== Prod Mode Setup (CI/CD) ===
     Log To Console    Tearing down existing containers and volumes...
 
-    Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    down    -v    shell=True
-    Run Process    rm    -rf    backends/advanced/data/test_mongo_data    shell=True
-    Run Process    rm    -rf    backends/advanced/data/test_qdrant_data    shell=True
-    Run Process    rm    -rf    backends/advanced/data/test_audio_chunks    shell=True
+    Run Process    docker    compose    -f    docker-compose-ci.yml    down    -v    cwd=backends/advanced    shell=True
+    Run Process    rm    -rf    data/test_mongo_data    data/test_qdrant_data    data/test_audio_chunks    cwd=backends/advanced    shell=True
 
     Log To Console    Building and starting fresh containers...
-    Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    up    -d    --build    shell=True
+    Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
 
     Log To Console    Waiting for services to be ready...
     Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
@@ -108,32 +112,32 @@ Fast Development Setup
     Dev Mode Setup
 
 Start advanced-server
-    [Documentation]    Start the server using docker-compose (legacy compatibility)
+    [Documentation]    Start the server using docker compose (legacy compatibility)
     ${is_up}=    Run Keyword And Return Status    Readiness Check    ${API_URL}
     IF    ${is_up}
         Log    advanced-server is already running
         RETURN
     ELSE
         Log    Starting advanced-server
-        Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    up    -d    --build    shell=True
+        Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
         Log    Waiting for services to start...
         Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
         Log    Services are ready
     END
 
 Stop advanced-server
-    [Documentation]    Stop the server using docker-compose (legacy compatibility)
-    Run Process    docker-compose    -f    backends/advanced/docker-compose-test.yml    down    shell=True
+    [Documentation]    Stop the server using docker compose (legacy compatibility)
+    Run Process    docker    compose    -f    docker-compose-ci.yml    down    cwd=backends/advanced    shell=True
 
 Start speaker-recognition-service
-    [Documentation]    Start the speaker recognition service using docker-compose
+    [Documentation]    Start the speaker recognition service using docker compose
     ${is_up}=    Run Keyword And Return Status    Readiness Check    ${SPEAKER_RECOGNITION_URL}
     IF    ${is_up}
         Log    speaker-recognition-service is already running
         RETURN
     ELSE
         Log    Starting speaker-recognition-service
-        Run Process    docker-compose    -f    extras/speaker-recognition/docker-compose-test.yml    up    -d    --build    shell=True
+        Run Process    docker    compose    -f    extras/speaker-recognition/docker-compose-test.yml    up    -d    --build    shell=True
         Log    Waiting for speaker recognition service to start...
         Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${SPEAKER_RECOGNITION_URL}
         Log    Speaker recognition service is ready
