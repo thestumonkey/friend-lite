@@ -91,7 +91,7 @@ Conversation Closes On Inactivity Timeout And Restarts Speech Detection
 
     # Open stream and send enough audio to trigger speech detection and conversation
     ${stream_id}=    Open Audio Stream    device_name=${device_name}
-    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=300
+    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_PATH}    num_chunks=200
 
     # Wait for conversation job to be created (transcription + speech analysis takes time)
     ${conv_jobs}=    Wait Until Keyword Succeeds    60s    3s
