@@ -649,25 +649,32 @@ async def flush_all_jobs(
         # Also clean up audio streams and consumer locks
         deleted_keys = 0
 
-        # Delete audio streams
-        cursor = 0
-        while True:
-            cursor, keys = await redis_conn.scan(cursor, match="audio:*", count=1000)
-            if keys:
-                await redis_conn.delete(*keys)
-                deleted_keys += len(keys)
-            if cursor == 0:
-                break
+        # Get async Redis connection for scanning
+        from advanced_omi_backend.controllers.queue_controller import REDIS_URL
+        async_redis = await aioredis.from_url(REDIS_URL)
 
-        # Delete consumer locks
-        cursor = 0
-        while True:
-            cursor, keys = await redis_conn.scan(cursor, match="consumer:*", count=1000)
-            if keys:
-                await redis_conn.delete(*keys)
-                deleted_keys += len(keys)
-            if cursor == 0:
-                break
+        try:
+            # Delete audio streams
+            cursor = 0
+            while True:
+                cursor, keys = await async_redis.scan(cursor, match="audio:*", count=1000)
+                if keys:
+                    await async_redis.delete(*keys)
+                    deleted_keys += len(keys)
+                if cursor == 0:
+                    break
+
+            # Delete consumer locks
+            cursor = 0
+            while True:
+                cursor, keys = await async_redis.scan(cursor, match="consumer:*", count=1000)
+                if keys:
+                    await async_redis.delete(*keys)
+                    deleted_keys += len(keys)
+                if cursor == 0:
+                    break
+        finally:
+            await async_redis.close()
 
         preserved = []
         if not request.include_failed:

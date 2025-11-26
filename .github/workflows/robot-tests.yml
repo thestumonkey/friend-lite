@@ -325,28 +325,28 @@ jobs:
           const status = failed === '0' ? '✅ All tests passed!' : '❌ Some tests failed';
           const emoji = failed === '0' ? '🎉' : '⚠️';
 
-          const comment = \`## \${emoji} Robot Framework Test Results
+          const comment = `## ${emoji} Robot Framework Test Results
 
-          **Status**: \${status}
+          **Status**: ${status}
 
           | Metric | Count |
           |--------|-------|
-          | ✅ Passed | \${passed} |
-          | ❌ Failed | \${failed} |
-          | 📊 Total | \${total} |
+          | ✅ Passed | ${passed} |
+          | ❌ Failed | ${failed} |
+          | 📊 Total | ${total} |
 
           ### 📊 View Reports
 
           **GitHub Pages (Live Reports):**
-          - [📋 Test Report](\${pagesUrl}report.html)
-          - [📝 Detailed Log](\${pagesUrl}log.html)
+          - [📋 Test Report](${pagesUrl}report.html)
+          - [📝 Detailed Log](${pagesUrl}log.html)
 
           **Download Artifacts:**
-          - [robot-test-reports-html](\${runUrl}) - HTML reports
-          - [robot-test-results-xml](\${runUrl}) - XML output
+          - [robot-test-reports-html](${runUrl}) - HTML reports
+          - [robot-test-results-xml](${runUrl}) - XML output
 
           ---
-          *[View full workflow run](\${runUrl})*\`;
+          *[View full workflow run](${runUrl})*`;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
