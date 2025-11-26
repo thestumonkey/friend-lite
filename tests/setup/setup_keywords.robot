@@ -22,6 +22,7 @@ Library          Process
 Library          DateTime
 Variables        test_env.py
 Resource         ../resources/session_resources.robot
+Resource         ../resources/conversation_keywords.robot
 
 
 *** Keywords ***
@@ -42,6 +43,11 @@ Suite Setup
 
     # Create admin session for all tests
     Create API Session    api
+
+    # Create fixture conversation if CREATE_FIXTURE env var is set (typically in Makefile 'all' target)
+    # This is best-effort - if it fails, tests continue
+    ${create_fixture}=    Get Environment Variable    CREATE_FIXTURE    default=false
+    Run Keyword If    '${create_fixture}' == 'true'    Run Keyword And Ignore Error    Create Fixture Conversation
 
 Dev Mode Setup
     [Documentation]    Default development mode - reuse containers, clear data only (fastest)
@@ -162,34 +168,49 @@ Health Check
     RETURN    ${True}
 
 Clear Test Databases
-    [Documentation]    Quickly clear test databases and audio files without restarting containers (preserves admin user)
+    [Documentation]    Quickly clear test databases and audio files without restarting containers (preserves admin user and fixture conversations tagged with is_fixture=true)
     Log To Console    Clearing test databases and audio files...
 
-    # Clear MongoDB collections but preserve admin user
-    # Note: Removed shell=True to avoid shell interpretation of curly braces
-    Run Process    docker    exec    advanced-mongo-test-1    mongosh    test_db    --eval    db.users.deleteMany({'email': {$$ne:'${ADMIN_EMAIL}'}})
-    Run Process    docker    exec    advanced-mongo-test-1    mongosh    test_db    --eval    db.conversations.deleteMany({})
-    Run Process    docker    exec    advanced-mongo-test-1    mongosh    test_db    --eval    db.audio_chunks.deleteMany({})
-    # Clear admin user's registered_clients array to prevent client_id counter increments
-    Run Process    docker    exec    advanced-mongo-test-1    mongosh    test_db    --eval    db.users.updateOne({'email':'${ADMIN_EMAIL}'}, {$$set: {'registered_clients': []}})
-    Log To Console    MongoDB collections cleared (except admin user)
+    # Clear MongoDB collections but preserve admin user and fixtures
+    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.users.deleteMany({'email': {\\$ne:'${ADMIN_EMAIL}'}})"    shell=True
+
+    # Clear conversations and audio_chunks except those tagged as fixtures
+    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.deleteMany({\\$or: [{'is_fixture': {\\$exists: false}}, {'is_fixture': false}]})"    shell=True
+    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.audio_chunks.deleteMany({\\$or: [{'is_fixture': {\\$exists: false}}, {'is_fixture': false}]})"    shell=True
+
+    # Count fixtures for logging
+    ${result}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.countDocuments({'is_fixture': true})" --quiet    shell=True
+    ${fixture_count}=    Strip String    ${result.stdout}
+
+    IF    '${fixture_count}' != '0'
+        Log To Console    MongoDB cleared (preserved admin user + ${fixture_count} fixture conversation(s))
+    ELSE
+        Log To Console    MongoDB cleared (preserved admin user only)
+    END
+
+    # Clear admin user's registered_clients dict to prevent client_id counter increments
+    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.users.updateOne({'email':'${ADMIN_EMAIL}'}, {\\$set: {'registered_clients': {}}})"    shell=True
 
     # Clear Qdrant collections
+    # Note: Fixture memories will be lost here unless we implement Qdrant metadata filtering
     Run Process    curl    -s    -X    DELETE    http://localhost:6337/collections/memories    shell=True
     Run Process    curl    -s    -X    DELETE    http://localhost:6337/collections/conversations    shell=True
     Log To Console    Qdrant collections cleared
 
-    # Clear audio files from mounted volumes
-    Run Process    rm    -rf    ${EXECDIR}/backends/advanced/data/test_audio_chunks/*    shell=True
-    Run Process    rm    -rf    ${EXECDIR}/backends/advanced/data/test_debug_dir/*    shell=True
-    # Also clear any files inside the container (in case of different mount paths)
-    Run Process    docker    exec    advanced-friend-backend-test-1    find    /app/audio_chunks    -name    *.wav    -delete    shell=True
-    Run Process    docker    exec    advanced-friend-backend-test-1    find    /app/debug_dir    -name    *    -type    f    -delete    shell=True
-    Log To Console    Audio files and debug files cleared
+    # Clear audio files (except fixtures subfolder)
+    Run Process    bash    -c    find ${EXECDIR}/backends/advanced/data/test_audio_chunks -maxdepth 1 -name "*.wav" -delete || true    shell=True
+    Run Process    bash    -c    rm -rf ${EXECDIR}/backends/advanced/data/test_debug_dir/* || true    shell=True
+    Log To Console    Audio files cleared (fixtures/ subfolder preserved)
 
-    # Clear Redis queues and job registries
-    Run Process    docker    exec    advanced-redis-test-1    redis-cli    FLUSHALL    shell=True
-    Log To Console    Redis queues and job registries cleared
+    # Clear container audio files (except fixtures subfolder)
+    Run Process    bash    -c    docker exec advanced-friend-backend-test-1 find /app/audio_chunks -maxdepth 1 -name "*.wav" -delete || true    shell=True
+    Run Process    bash    -c    docker exec advanced-friend-backend-test-1 find /app/debug_dir -name "*" -type f -delete || true    shell=True
+
+    # Clear Redis queues and job registries (preserve worker registrations, failed and completed jobs)
+    # Delete all rq:* keys except worker registrations (rq:worker:*), failed jobs (rq:failed:*), and completed jobs (rq:finished:*)
+    ${redis_clear_script}=    Set Variable    redis-cli --scan --pattern "rq:*" | grep -Ev "^rq:(worker|failed|finished)" | xargs -r redis-cli DEL; redis-cli --scan --pattern "audio:*" | xargs -r redis-cli DEL; redis-cli --scan --pattern "consumer:*" | xargs -r redis-cli DEL
+    Run Process    docker    exec    advanced-redis-test-1    sh    -c    ${redis_clear_script}    shell=True
+    Log To Console    Redis queues and job registries cleared (worker registrations preserved)
 
 Reset Data Without Restart
     [Documentation]    Ultra-fast reset for rapid iteration (alias for Clear Test Databases)

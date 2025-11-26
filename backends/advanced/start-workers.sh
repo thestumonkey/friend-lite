@@ -23,7 +23,7 @@ hostname = socket.gethostname()
 workers = Worker.all(connection=redis_conn)
 cleaned = 0
 for worker in workers:
-    if hostname in worker.name:
+    if worker.hostname == hostname:
         worker.register_death()
         cleaned += 1
 print(f'Cleaned up {cleaned} stale workers from {hostname}')

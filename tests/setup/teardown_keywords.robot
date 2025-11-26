@@ -17,6 +17,7 @@ Library          RequestsLibrary
 Library          OperatingSystem
 Library          Process
 Variables        test_env.py
+Resource         ../resources/queue_keywords.robot
 
 
 *** Keywords ***
@@ -133,3 +134,14 @@ Cleanup Speaker Recognition Service
     ELSE
         Log To Console    Skipping speaker recognition cleanup (dev mode)
     END
+
+Test Cleanup
+    [Documentation]    Standard test teardown - flush in-progress jobs and cleanup streams
+    ...                Use this as Test Teardown for all tests
+    TRY
+        # Try to cleanup audio streams if the keyword exists (websocket tests)
+        Run Keyword    Cleanup All Audio Streams
+    EXCEPT
+        Log    No audio streams to cleanup
+    END
+    Flush In Progress Jobs

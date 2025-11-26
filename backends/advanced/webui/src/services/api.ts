@@ -165,6 +165,12 @@ export const queueApi = {
   cleanupStuckWorkers: () => api.post('/api/streaming/cleanup'),
   cleanupOldSessions: (maxAgeSeconds: number = 3600) => api.post(`/api/streaming/cleanup-sessions?max_age_seconds=${maxAgeSeconds}`),
 
+  // Job flush operations
+  flushJobs: (flushAll: boolean, body: any) => {
+    const endpoint = flushAll ? '/api/queue/flush-all' : '/api/queue/flush'
+    return api.post(endpoint, body)
+  },
+
   // Legacy endpoints - kept for backward compatibility but not used in Queue page
   // getJobs: (params: URLSearchParams) => api.get(`/api/queue/jobs?${params}`),
   // getJobsBySession: (sessionId: string) => api.get(`/api/queue/jobs/by-session/${sessionId}`),

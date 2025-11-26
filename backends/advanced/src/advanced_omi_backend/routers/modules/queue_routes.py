@@ -492,6 +492,8 @@ class FlushJobsRequest(BaseModel):
 
 class FlushAllJobsRequest(BaseModel):
     confirm: bool
+    include_failed: bool = False  # By default, preserve failed jobs for debugging
+    include_completed: bool = False  # By default, preserve completed jobs for debugging
 
 
 @router.post("/flush")
@@ -567,7 +569,11 @@ async def flush_all_jobs(
     request: FlushAllJobsRequest,
     current_user: User = Depends(current_active_user)
 ):
-    """Flush ALL jobs (DANGER - requires confirmation)."""
+    """
+    Flush jobs from queues and registries.
+    By default preserves failed and completed jobs for debugging.
+    Set include_failed=true or include_completed=true to flush those as well.
+    """
     if not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -597,15 +603,19 @@ async def flush_all_jobs(
             total_removed += queued_count
             logger.info(f"Emptied {queued_count} queued jobs from {queue_name}")
 
-            # Remove from all registries
+            # Build list of registries to flush based on request parameters
             registries = [
-                ("finished", FinishedJobRegistry(queue=queue)),
-                ("failed", FailedJobRegistry(queue=queue)),
-                ("canceled", CanceledJobRegistry(queue=queue)),
-                ("started", StartedJobRegistry(queue=queue)),
-                ("deferred", DeferredJobRegistry(queue=queue)),
-                ("scheduled", ScheduledJobRegistry(queue=queue))
+                ("started", StartedJobRegistry(queue=queue)),  # Always flush in-progress
+                ("deferred", DeferredJobRegistry(queue=queue)),  # Always flush deferred
+                ("scheduled", ScheduledJobRegistry(queue=queue)),  # Always flush scheduled
+                ("canceled", CanceledJobRegistry(queue=queue))  # Always flush canceled
             ]
+
+            # Conditionally add failed and finished registries
+            if request.include_failed:
+                registries.append(("failed", FailedJobRegistry(queue=queue)))
+            if request.include_completed:
+                registries.append(("finished", FinishedJobRegistry(queue=queue)))
 
             for registry_name, registry in registries:
                 job_ids = list(registry.get_job_ids())  # Convert to list to avoid iterator issues
@@ -636,11 +646,43 @@ async def flush_all_jobs(
                         except Exception as reg_error:
                             logger.error(f"Could not remove {job_id} from registry: {reg_error}")
 
-        logger.info(f"Flushed {total_removed} jobs from all queues")
+        # Also clean up audio streams and consumer locks
+        deleted_keys = 0
+
+        # Delete audio streams
+        cursor = 0
+        while True:
+            cursor, keys = await redis_conn.scan(cursor, match="audio:*", count=1000)
+            if keys:
+                await redis_conn.delete(*keys)
+                deleted_keys += len(keys)
+            if cursor == 0:
+                break
+
+        # Delete consumer locks
+        cursor = 0
+        while True:
+            cursor, keys = await redis_conn.scan(cursor, match="consumer:*", count=1000)
+            if keys:
+                await redis_conn.delete(*keys)
+                deleted_keys += len(keys)
+            if cursor == 0:
+                break
+
+        preserved = []
+        if not request.include_failed:
+            preserved.append("failed jobs")
+        if not request.include_completed:
+            preserved.append("completed jobs")
+
+        preserved_msg = f" (preserved {', '.join(preserved)})" if preserved else ""
+        logger.info(f"Flushed {total_removed} jobs and {deleted_keys} Redis keys from all queues{preserved_msg}")
 
         return {
             "total_removed": total_removed,
-            "message": "All jobs have been flushed"
+            "deleted_keys": deleted_keys,
+            "preserved": preserved,
+            "message": f"Flushed {total_removed} jobs{preserved_msg}"
         }
 
     except Exception as e:
