@@ -10,7 +10,7 @@ Resource         ../resources/user_resources.robot
 Resource         ../resources/memory_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
-
+Test Setup       Test Cleanup
 *** Test Cases ***
 
 Get User Memories Test

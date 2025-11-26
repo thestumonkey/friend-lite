@@ -22,36 +22,18 @@ Resource         ../resources/conversation_keywords.robot
 Resource         ../resources/queue_keywords.robot
 Variables        ../setup/test_env.py
 Variables        ../setup/test_data.py
-Suite Setup      Infra Suite Setup
-Suite Teardown   Infra Suite Teardown
-
+Suite Setup      Suite Setup
+Suite Teardown   Suite Teardown
+Test Setup       Test Cleanup
 *** Variables ***
 ${WORKERS_CONTAINER}    advanced-workers-test-1
 ${REDIS_CONTAINER}      advanced-redis-test-1
 
 *** Keywords ***
-Infra Suite Setup
-    [Documentation]    Setup for infrastructure tests
-    Suite Setup
-    Get Anonymous Session    health_session
-
-    # Ensure workers are running and registered
-    Log To Console    \n🔧 Ensuring workers are registered...
-    ${worker_count}=    Get Worker Count From Health Endpoint
-    IF    ${worker_count} == 0
-        Log To Console    ⚠️ No workers registered, restarting workers container...
-        Restart Workers Container
-        ${worker_count}=    Get Worker Count From Health Endpoint
-        Log To Console    Workers registered: ${worker_count}
-    END
-    Should Be True    ${worker_count} > 0    msg=Workers must be registered before tests start
-
-Infra Suite Teardown
-    [Documentation]    Cleanup for infrastructure tests
-    Suite Teardown
 
 Get Worker Count From Health Endpoint
     [Documentation]    Get current worker count from health endpoint
+    Get Anonymous Session    health_session
     ${response}=    GET On Session    health_session    /health
     Should Be Equal As Integers    ${response.status_code}    200
 
@@ -127,7 +109,7 @@ Worker Registration Loss Detection Test
     ...                - Health endpoint reports 0 workers when registration is lost
     ...                - Self-healing mechanism detects the issue
     ...                - Workers automatically re-register within monitoring interval
-    [Tags]    infrastructure resilience worker-registration speed-slow
+    [Tags]    infra	queue
 
     # Step 1: Verify workers are initially registered
     Log To Console    \n📊 Step 1: Check initial worker registration
@@ -192,9 +174,9 @@ Worker Count Validation Test
     ...                - Health endpoint includes worker_count field
     ...                - Worker count matches expected number (7 workers: 6 RQ + 1 audio)
     ...                - Worker state information is accurate
-    [Tags]    infrastructure health worker-count speed-fast
+    [Tags]    health	queue
 
-    ${response}=    GET On Session    health_session    /health
+    ${response}=    GET On Session    api    /health
     Should Be Equal As Integers    ${response.status_code}    200
 
     ${health}=    Set Variable    ${response.json()}
@@ -235,7 +217,7 @@ Redis Connection Resilience Test
     ...                - Reports Redis status correctly
     ...                - Marks Redis as critical service
     ...                - Can detect connection failures
-    [Tags]    infrastructure health redis speed-fast
+    [Tags]    health	infra
 
     ${response}=    GET On Session    health_session    /health
     Should Be Equal As Integers    ${response.status_code}    200
@@ -273,47 +255,34 @@ WebSocket Disconnect Conversation End Reason Test
     [Tags]    infra	audio-streaming
 
     # Start audio stream and send chunks to trigger conversation
-    ${device_name}=    Set Variable    disconnect-test-device
+    ${device_name}=    Set Variable    disconnect
     ${stream_id}=    Open Audio Stream    device_name=${device_name}
 
     # Send audio fast (no realtime pacing) to simulate disconnect before END signal
-    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_FILE}    num_chunks=100    realtime_pacing=${False}
+    Send Audio Chunks To Stream    ${stream_id}    ${TEST_AUDIO_FILE}    num_chunks=100 
 
     # Wait for conversation job to be created and conversation_id to be populated
     ${conv_jobs}=    Wait Until Keyword Succeeds    30s    2s
     ...    Job Type Exists For Client    open_conversation    ${device_name}
 
     # Wait for conversation_id in job meta (created asynchronously)
-    ${conversation_id}=    Set Variable    ${EMPTY}
-    FOR    ${i}    IN RANGE    30
-        ${conv_jobs}=    Get Jobs By Type And Client    open_conversation    ${device_name}
-        ${conv_job}=    Get Most Recent Job    ${conv_jobs}
-        ${conv_meta}=    Set Variable    ${conv_job}[meta]
-        ${conversation_id}=    Evaluate    $conv_meta.get('conversation_id', '')
-        IF    '${conversation_id}' != ''
-            BREAK
-        END
-        Sleep    1s
-    END
-    Should Not Be Empty    ${conversation_id}    msg=Conversation ID not found in job meta
+    ${conversation_id}=    Wait Until Keyword Succeeds    10s    0.5s
+    ...    Get Conversation ID From Job Meta    open_conversation    ${device_name}
 
     # Simulate WebSocket disconnect (Bluetooth dropout)
     Close Audio Stream    ${stream_id}
 
     # Wait for job to complete (should be fast, not 3600s timeout)
+    ${conv_jobs}=    Get Jobs By Type And Client    open_conversation    ${device_name}
+    ${conv_job}=    Get Most Recent Job    ${conv_jobs}
     Wait For Job Status    ${conv_job}[job_id]    completed    timeout=60s    interval=2s
 
     # Wait for end_reason to be saved to database (retry with timeout)
-    FOR    ${i}    IN RANGE    20
-        Sleep    1s    reason=Wait for database update
-        ${conversation}=    Get Conversation By ID    ${conversation_id}
-        ${end_reason}=    Set Variable    ${conversation}[end_reason]
-        IF    '${end_reason}' != 'None'
-            BREAK
-        END
-    END
+    ${conversation}=    Wait Until Keyword Succeeds    10s    0.5s
+    ...    Check Conversation Has End Reason    ${conversation_id}
 
     # Verify conversation was saved with correct end_reason
+    ${end_reason}=    Set Variable    ${conversation}[end_reason]
     Should Be Equal As Strings    ${end_reason}    websocket_disconnect
     Should Not Be Equal    ${conversation}[completed_at]    ${None}
 

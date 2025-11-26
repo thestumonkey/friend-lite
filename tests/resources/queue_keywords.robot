@@ -1,5 +1,5 @@
 *** Settings ***
-Documentation    Memory Management Keywords
+Documentation    Queue Management Keywords
 Library          RequestsLibrary
 Library          Collections
 Variables        ../setup/test_env.py
@@ -227,3 +227,94 @@ Job Type Exists For Conversation
     ${jobs}=    Get Jobs By Type And Conversation    ${job_type}    ${conversation_id}
     Should Not Be Empty    ${jobs}    No ${job_type} jobs found for conversation ${conversation_id}
     RETURN    ${jobs}
+
+Cancel All Running Jobs
+    [Documentation]    Cancel all running/queued jobs in all queues
+    ...                Use in test teardown to clean up lingering jobs
+
+    Log    Cancelling all running jobs
+    TRY
+        ${payload}=    Create Dictionary    confirm=${True}
+        ${response}=    POST On Session    api    /api/queue/flush-all    json=${payload}    expected_status=200
+        Log    Successfully cancelled all jobs: ${response.json()}
+    EXCEPT    AS    ${error}
+        Log    Failed to cancel jobs: ${error}
+    END
+
+Flush In Progress Jobs
+    [Documentation]    Flush only queued and in-progress jobs (preserves completed/failed jobs)
+    ...                Use in test cleanup to reset queue state without losing job history
+
+    Log To Console    Flushing in-progress and queued jobs...
+    TRY
+        ${payload}=    Create Dictionary    confirm=${True}
+        ${response}=    POST On Session    api    /api/queue/flush-all    json=${payload}    expected_status=200
+        ${result}=    Set Variable    ${response.json()}
+        Log To Console    Successfully flushed ${result}[total_removed] jobs
+        RETURN    ${result}[total_removed]
+    EXCEPT    AS    ${error}
+        Log    Failed to flush jobs: ${error}    WARN
+        RETURN    0
+    END
+
+Get Queue Stats
+    [Documentation]    Get current queue statistics from the queue API
+    ${response}=    GET On Session    api    /api/queue/stats    expected_status=200
+    RETURN    ${response.json()}
+
+Get Queue Worker Details
+    [Documentation]    Get queue worker health and status information
+    ${response}=    GET On Session    api    /api/queue/worker-details    expected_status=200
+    RETURN    ${response.json()}
+
+Get Most Recent Job
+    [Documentation]    Get the job with the most recent created_at timestamp from a list
+    ...                Optionally filter by job_type
+    [Arguments]    ${jobs}    ${job_type}=${None}
+
+    ${most_recent}=    Set Variable    ${None}
+    ${most_recent_time}=    Set Variable    ${None}
+
+    FOR    ${job}    IN    @{jobs}
+        # Filter by job_type if specified
+        IF    '${job_type}' != '${None}'
+            ${current_job_type}=    Set Variable    ${job}[job_type]
+            ${type_matches}=    Evaluate    '${current_job_type}' == '${job_type}'
+            IF    not ${type_matches}
+                CONTINUE
+            END
+        END
+
+        ${created_at}=    Set Variable    ${job}[created_at]
+        IF    $most_recent_time is None or $created_at > $most_recent_time
+            ${most_recent}=    Set Variable    ${job}
+            ${most_recent_time}=    Set Variable    ${created_at}
+        END
+    END
+
+    IF    '${job_type}' != '${None}'
+        Should Not Be Equal    ${most_recent}    ${None}    No jobs found in list with job_type=${job_type}
+    ELSE
+        Should Not Be Equal    ${most_recent}    ${None}    No jobs found in list
+    END
+    Log    Most recent job created at: ${most_recent_time}
+    RETURN    ${most_recent}
+
+Get Conversation ID From Job Meta
+    [Documentation]    Extract conversation_id from job meta, fails if not present
+    [Arguments]    ${job_type}    ${device_name}
+
+    ${conv_jobs}=    Get Jobs By Type And Client    ${job_type}    ${device_name}
+    ${conv_job}=    Get Most Recent Job    ${conv_jobs}
+    ${conv_meta}=    Set Variable    ${conv_job}[meta]
+    ${conversation_id}=    Evaluate    $conv_meta.get('conversation_id', '')
+    Should Not Be Empty    ${conversation_id}    msg=Conversation ID not found in job meta
+    RETURN    ${conversation_id}
+
+Job Should Be Complete
+    [Documentation]    Check if job has reached a completed state (completed, finished, or failed)
+    [Arguments]    ${job_id}
+
+    ${job}=    Get Job status    ${job_id}
+    ${status}=    Set Variable    ${job}[status]
+    Should Be True    '${status}' in ['completed', 'finished', 'failed']    Job status: ${status}

@@ -7,7 +7,7 @@ Resource         ../setup/teardown_keywords.robot
 Resource         ../resources/user_resources.robot
 Suite Setup      Suite Setup
 Suite Teardown   Delete All Sessions
-
+Test Setup       Test Cleanup
 *** Test Cases ***
 
 Get Active Clients Test

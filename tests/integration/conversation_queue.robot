@@ -11,6 +11,7 @@ Resource         ../resources/queue_keywords.robot
 Variables        ../setup/test_env.py
 Variables        ../setup/test_data.py
 Suite Setup      Suite Setup
+Suite Teardown   Suite Teardown
 Test Setup       Clear Test Databases
 
 
@@ -108,12 +109,3 @@ Test Reprocess Conversation Job Queue
 
     Log    Reprocess Job Queue Test Completed Successfully    INFO
 
-*** Keywords ***
-
-Job Should Be Complete
-    [Documentation]    Check if job has reached a completed state
-    [Arguments]     ${job_id}
-
-    ${job}=    Get Job status    ${job_id}
-    ${status}=    Set Variable    ${job}[status]
-    Should Be True    '${status}' in ['completed', 'finished', 'failed']    Job status: ${status}

@@ -11,32 +11,17 @@ Resource            ../setup/teardown_keywords.robot
 Resource            ../resources/session_resources.robot
 Resource            ../resources/user_resources.robot
 Resource            ../resources/conversation_keywords.robot
+Resource            ../resources/queue_keywords.robot
 Variables           ../setup/test_env.py
 
 Suite Setup         Suite Setup
 Suite Teardown      Suite Teardown
-
+Test Setup       Test Cleanup
 *** Variables ***
 ${TEST_TIMEOUT}             180s
 ${COMPOSE_FILE}             backends/advanced/docker-compose-test.yml
 
 *** Keywords ***
-
-
-Check Queue Stats
-    [Documentation]    Get current queue statistics
-    ${response}=    GET On Session    api    /api/queue/stats    expected_status=200
-    RETURN    ${response.json()}
-
-Check Queue Jobs
-    [Documentation]    Get current jobs in queue
-    ${response}=    GET On Session    api    /api/queue/jobs    expected_status=200
-    RETURN    ${response.json()}
-
-Check Queue Health
-    [Documentation]    Get queue health status
-    ${response}=    GET On Session    api    /api/queue/worker-details    expected_status=200
-    RETURN    ${response.json()}
 
 Restart Backend Service
     [Documentation]    Restart the backend service to test persistence
@@ -63,7 +48,7 @@ Test RQ Job Enqueuing
     [Tags]    queue
 
     # Check initial queue state
-    ${initial_stats}=    Check Queue Stats
+    ${initial_stats}=    Get Queue Stats
     ${initial_queued}=    Set Variable    ${initial_stats}[queued_jobs]
 
     # Find or create test conversation
@@ -74,7 +59,7 @@ Test RQ Job Enqueuing
     ${job_id}=    Reprocess Transcript   ${conversation_id}
 
     # Verify job was enqueued
-    ${stats_after}=    Check Queue Stats
+    ${stats_after}=    Get Queue Stats
     ${queued_after}=    Set Variable    ${stats_after}[queued_jobs]
 
     Should Be True    ${queued_after} >= ${initial_queued}
@@ -92,15 +77,15 @@ Test Job Persistence Through Backend Restart
         ${job_id}=    Reprocess Transcript    ${conversation_id}
 
         # Verify jobs exist in queue (may include other jobs)
-        ${jobs_before}=    Check Queue Jobs
-        ${jobs_count_before}=    Get Length    ${jobs_before}[jobs]
+        ${jobs_before}=    Get job queue
+        ${jobs_count_before}=    Get Length    ${jobs_before}
 
         # Restart backend service
         Restart Backend Service
 
         # Verify queue is still accessible and jobs persist
-        ${jobs_after}=    Check Queue Jobs
-        ${jobs_count_after}=    Get Length    ${jobs_after}[jobs]
+        ${jobs_after}=    Get job queue
+        ${jobs_count_after}=    Get Length    ${jobs_after}
 
         # Jobs should persist through restart (count may be same or greater)
         Should Be True    ${jobs_count_after} >= 0
@@ -128,15 +113,15 @@ Test Multiple Jobs Persistence
         Log    Created ${job_count} reprocessing jobs
 
         # Get baseline job count
-        ${jobs_before}=    Check Queue Jobs
-        ${jobs_count_before}=    Get Length    ${jobs_before}[jobs]
+        ${jobs_before}=    Get job queue
+        ${jobs_count_before}=    Get Length    ${jobs_before}
 
         # Restart backend
         Restart Backend Service
 
         # Verify jobs persist through restart
-        ${jobs_after}=    Check Queue Jobs
-        ${jobs_count_after}=    Get Length    ${jobs_after}[jobs]
+        ${jobs_after}=    Get job queue
+        ${jobs_count_after}=    Get Length    ${jobs_after}
 
         # Jobs should persist (exact count may vary based on processing)
         Should Be True    ${jobs_count_after} >= 0
@@ -151,7 +136,7 @@ Test Queue Stats Accuracy
     [Tags]    queue
 
     # Get baseline stats
-    ${initial_stats}=    Check Queue Stats
+    ${initial_stats}=    Get Queue Stats
     ${initial_processing}=    Set Variable    ${initial_stats}[processing_jobs]
 
     # Find test conversation
@@ -171,7 +156,7 @@ Test Queue Stats Accuracy
         Sleep    2s
 
         # Check updated stats - verify API returns valid data
-        ${updated_stats}=    Check Queue Stats
+        ${updated_stats}=    Get Queue Stats
         Dictionary Should Contain Key    ${updated_stats}    processing_jobs
         Dictionary Should Contain Key    ${updated_stats}    queued_jobs
         Dictionary Should Contain Key    ${updated_stats}    completed_jobs

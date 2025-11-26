@@ -10,6 +10,7 @@ Resource         ../resources/user_resources.robot
 Resource         ../resources/chat_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
+Test Setup       Test Cleanup
 
 *** Test Cases ***
 

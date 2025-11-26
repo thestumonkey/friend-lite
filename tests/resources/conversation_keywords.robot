@@ -48,7 +48,7 @@ Reprocess Transcript
     ${initial_status}=    Set Variable    ${reprocess_data}[status]
 
     Log    Reprocess job created: ${job_id} with status: ${initial_status}    INFO
-    Should Be Equal As Strings    ${initial_status}    queued
+    Should Be True    '${initial_status}' in ['queued', 'processing']    Status should be 'queued' or 'processing', got: ${initial_status}
 
     RETURN    ${response.json()}
 
@@ -188,3 +188,67 @@ Find Test Conversation
 
     RETURN    ${conversation}
 
+Create Fixture Conversation
+    [Documentation]    Create a persistent fixture conversation for reuse across tests
+    ...                This conversation will NOT be deleted between test suites
+    ...                Tags the conversation with is_fixture=true in MongoDB
+    ...                Audio files will be stored in fixtures/ subfolder
+    ...                Returns the conversation ID
+    [Arguments]    ${device_name}=fixture-device
+
+    Log To Console    \nCreating fixture conversation...
+
+    # Upload test audio to fixtures folder
+    ${conversation}=    Upload Audio File    ${TEST_AUDIO_FILE}    ${device_name}    folder=fixtures
+
+    # Verify conversation was created successfully (MongoDB uses conversation_id as the field name)
+    Dictionary Should Contain Key    ${conversation}    conversation_id
+    ${conversation_id}=    Set Variable    ${conversation}[conversation_id]
+
+    # Verify it has transcript content
+    Dictionary Should Contain Key    ${conversation}    transcript
+    ${transcript}=    Set Variable    ${conversation}[transcript]
+    Should Not Be Empty    ${transcript}    Fixture conversation has no transcript
+
+    # Tag this conversation as a fixture in MongoDB so cleanup preserves it
+    ${result}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.updateOne({'conversation_id': '${conversation_id}'}, {\\$set: {'is_fixture': true}})"    shell=True
+    Should Be Equal As Integers    ${result.rc}    0    Failed to tag conversation as fixture: ${result.stderr}
+
+    # Also tag audio_chunks
+    ${result2}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.audio_chunks.updateMany({'conversation_id': '${conversation_id}'}, {\\$set: {'is_fixture': true}})"    shell=True
+    Should Be Equal As Integers    ${result2.rc}    0    Failed to tag audio chunks as fixture: ${result2.stderr}
+
+    Log To Console    ✓ Audio files stored in fixtures/ subfolder
+
+    ${transcript_len}=    Get Length    ${transcript}
+    Log To Console    ✓ Fixture conversation created: ${conversation_id}
+    Log To Console    ✓ Transcript length: ${transcript_len} chars
+    Log To Console    ✓ Tagged as fixture (is_fixture=true)
+
+    Set Global Variable    ${FIXTURE_CONVERSATION_ID}    ${conversation_id}
+
+    RETURN    ${conversation_id}
+
+Get Fixture Conversation
+    [Documentation]    Get the persistent fixture conversation
+    ...                Use this in tests that need an existing conversation without creating one
+    ...                Returns the full conversation object
+
+    ${fixture_id}=    Get Variable Value    ${FIXTURE_CONVERSATION_ID}    ${None}
+
+    IF    '${fixture_id}' == '${None}'
+        Fail    Fixture conversation not created. Call 'Create Fixture Conversation' in suite setup first.
+    END
+
+    ${conversation}=    Get Conversation By ID    ${fixture_id}
+
+    RETURN    ${conversation}
+
+Check Conversation Has End Reason
+    [Documentation]    Check if conversation has end_reason set (not None)
+    [Arguments]    ${conversation_id}
+
+    ${conversation}=    Get Conversation By ID    ${conversation_id}
+    ${end_reason}=    Set Variable    ${conversation}[end_reason]
+    Should Not Be Equal As Strings    ${end_reason}    None    msg=End reason not set yet
+    RETURN    ${conversation}

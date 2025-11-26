@@ -12,7 +12,7 @@ Resource         ../setup/teardown_keywords.robot
 
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
-Test Teardown    Test Cleanup
+Test Setup        Test Cleanup
 
 *** Variables ***
 

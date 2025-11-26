@@ -105,44 +105,34 @@ Cleanup All Audio Streams
 Stream And Wait For Conversation
     [Documentation]    Send audio chunks to stream, wait for conversation to be created and closed.
     ...                Returns the conversation_id of the completed conversation.
-    ...                Works correctly even with fixture conversations by waiting for the latest job.
+    ...                Works correctly even with existing conversations by tracking new conversation creation.
     [Arguments]    ${stream_id}    ${audio_file_path}    ${device_name}    ${num_chunks}=100
+
+    # Get baseline conversation IDs before streaming to detect new conversation
+    ${baseline_jobs}=    Get Jobs By Type And Client    open_conversation    ${device_name}
+    ${existing_conv_ids}=    Create List
+    FOR    ${job}    IN    @{baseline_jobs}
+        ${meta}=    Set Variable    ${job}[meta]
+        ${conv_id}=    Evaluate    $meta.get('conversation_id', '')
+        IF    '${conv_id}' != ''
+            Append To List    ${existing_conv_ids}    ${conv_id}
+        END
+    END
+    Log    Baseline conversation IDs: ${existing_conv_ids}
 
     # Send audio chunks
     Send Audio Chunks To Stream    ${stream_id}    ${audio_file_path}    num_chunks=${num_chunks}
 
-    # Wait for conversation job to be created (transcription + speech analysis takes time)
-    ${conv_jobs}=    Wait Until Keyword Succeeds    60s    3s
-    ...    Job Type Exists For Client    open_conversation    ${device_name}
+    # Wait for NEW conversation job to be created (not in baseline)
+    ${new_job}=    Wait Until Keyword Succeeds    60s    3s
+    ...    Wait For New Conversation Job    open_conversation    ${device_name}    ${existing_conv_ids}
 
-    # Get the most recent job (handles multiple conversations with same device)
-    ${latest_job}=    Get Most Recent Job    ${conv_jobs}
-
-    ${conv_meta}=    Set Variable    ${latest_job}[meta]
+    ${conv_meta}=    Set Variable    ${new_job}[meta]
     ${conversation_id}=    Evaluate    $conv_meta.get('conversation_id', '')
     Log    New conversation created: ${conversation_id}
 
     # Wait for conversation to close via inactivity timeout (with queue drain, can take 45+ seconds)
-    Wait For Job Status    ${latest_job}[job_id]    completed    timeout=60s    interval=2s
+    Wait For Job Status    ${new_job}[job_id]    completed    timeout=60s    interval=2s
     Log    Conversation closed: ${conversation_id}
 
     RETURN    ${conversation_id}
-
-Get Most Recent Job
-    [Documentation]    Get the job with the most recent created_at timestamp from a list
-    [Arguments]    ${jobs}
-
-    ${most_recent}=    Set Variable    ${None}
-    ${most_recent_time}=    Set Variable    ${None}
-
-    FOR    ${job}    IN    @{jobs}
-        ${created_at}=    Set Variable    ${job}[created_at]
-        IF    $most_recent_time is None or $created_at > $most_recent_time
-            ${most_recent}=    Set Variable    ${job}
-            ${most_recent_time}=    Set Variable    ${created_at}
-        END
-    END
-
-    Should Not Be Equal    ${most_recent}    ${None}    No jobs found in list
-    Log    Most recent job created at: ${most_recent_time}
-    RETURN    ${most_recent}

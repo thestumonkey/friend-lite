@@ -10,7 +10,7 @@ Resource         ../resources/session_resources.robot
 Resource         ../resources/user_resources.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
-
+Test Setup       Test Cleanup
 *** Test Cases ***
 
 Get Diarization Settings Test

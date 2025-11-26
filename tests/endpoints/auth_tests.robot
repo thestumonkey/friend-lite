@@ -8,6 +8,7 @@ Resource         ../setup/teardown_keywords.robot
 Resource         ../resources/user_resources.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
+Test Setup       Test Cleanup
 
 *** Variables ***
 # Test users are now imported from test_env.py via resource files

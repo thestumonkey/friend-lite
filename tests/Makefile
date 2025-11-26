@@ -47,9 +47,10 @@ mid:
 		$(TEST_DIR)
 
 # Run all tests (including long tests)
+# Creates a persistent fixture conversation that won't be deleted between suites
 all:
 	@echo "Running all tests..."
-	robot --outputdir $(OUTPUTDIR) \
+	CREATE_FIXTURE=true robot --outputdir $(OUTPUTDIR) \
 		--name "All Tests" \
 		$(TEST_DIR)
 

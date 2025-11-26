@@ -493,7 +493,7 @@ async def open_conversation_job(
         logger.warning(f"⚠️ Conversation {conversation_id} not found for audio_path update")
 
     # Enqueue post-conversation processing pipeline
-
+    client_id = conversation.client_id if conversation else None
 
     job_ids = start_post_conversation_jobs(
         conversation_id=conversation_id,
@@ -501,6 +501,7 @@ async def open_conversation_job(
         audio_file_path=file_path,
         user_id=user_id,
         post_transcription=True,  # Run batch transcription for streaming audio
+        client_id=client_id  # Pass client_id for UI tracking
     )
 
     logger.info(

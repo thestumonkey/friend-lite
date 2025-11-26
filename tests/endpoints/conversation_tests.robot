@@ -10,7 +10,7 @@ Resource         ../resources/conversation_keywords.robot
 Resource         ../resources/queue_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
-
+Test Setup       Test Cleanup
 *** Test Cases ***
 
 Get User Conversations Test
@@ -55,14 +55,19 @@ Reprocess test and get Conversation Versions Test
 
     ${test_conversation}=    Find Test Conversation
     ${conversation_id}=    Set Variable    ${test_conversation}[conversation_id]
+    ${start_num_versions}=    Set Variable           ${test_conversation}[transcript_version_count]
     ${reprocess}=    Reprocess Transcript     ${conversation_id}
 
     # Wait for the reprocess job to complete before getting versions
     ${job_id}=    Set Variable    ${reprocess}[job_id]
     Wait For Job Status    ${job_id}    completed    timeout=120s    interval=5s
 
-    ${versions}=           Get Conversation Versions     ${conversation_id}
-    Length Should Be     ${versions}    2
+    ${conversation}=           Get Conversation By ID       ${conversation_id}
+    ${updated_versions}=           Get Conversation Versions     ${conversation_id}
+
+    ${expected_count}=    Evaluate    ${start_num_versions} + 1
+    Should Be Equal As Integers     ${conversation}[transcript_version_count]    ${expected_count}
+    Should be equal as strings     ${conversation}[active_transcript_version]      ${updated_versions}[-1][version_id]    
 
 
 Unauthorized Conversation Access Test
@@ -156,12 +161,13 @@ Transcript Version activate Test
     ${test_conversation}=    Find Test Conversation
 
     ${conversation_id}=    Set Variable    ${test_conversation}[conversation_id]
-    ${reprocess}=    Reprocess Transcript     ${conversation_id}
-    
-    
-    # Wait for the reprocess job to complete before getting versions
-    ${job_id}=    Set Variable    ${reprocess}[job_id]
-    Wait For Job Status    ${job_id}    completed    timeout=120s    interval=5s
+    ${versions}=    Get Conversation Versions    ${conversation_id}
+    IF     len(${versions}) < 2
+        ${reprocess}=    Reprocess Transcript     ${conversation_id}
+            # Wait for the reprocess job to complete before getting versions
+        ${job_id}=    Set Variable    ${reprocess}[job_id]
+        Wait For Job Status    ${job_id}    completed    timeout=120s    interval=5s
+    END
 
     ${versions}=  Get Conversation Versions     ${conversation_id}
     # Test activating existing active version (should succeed)

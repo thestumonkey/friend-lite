@@ -11,23 +11,33 @@ Resource         queue_keywords.robot
 *** Keywords ***
 Upload Audio File
       [Documentation]    Upload audio file using session with proper multipart form data
-      [Arguments]    ${audio_file_path}    ${device_name}=robot-test
-      
+      [Arguments]    ${audio_file_path}    ${device_name}=robot-test    ${folder}=${None}
+
       # Verify file exists
       File Should Exist    ${audio_file_path}
 
       # Debug the request being sent
+      
       Log    Sending file: ${audio_file_path}
       Log    Device name: ${device_name}
+      Log    Folder: ${folder}
 
       # Create proper file upload using Python expressions to actually open the file
       Log    Files dictionary will contain: files -> ${audio_file_path}
       Log    Data dictionary will contain: device_name -> ${device_name}
 
-        ${response}=       POST On Session    api    /api/audio/upload
-        ...                files=${{ {'files': open('${audio_file_path}', 'rb')} }}
-        ...                params=device_name=${device_name}
-        ...                expected_status=any
+      # Build params dict with optional folder parameter
+      IF    '${folder}' != '${None}'
+          ${response}=       POST On Session    api    /api/audio/upload
+          ...                files=${{ {'files': open('${audio_file_path}', 'rb')} }}
+          ...                params=device_name=${device_name}&folder=${folder}
+          ...                expected_status=any
+      ELSE
+          ${response}=       POST On Session    api    /api/audio/upload
+          ...                files=${{ {'files': open('${audio_file_path}', 'rb')} }}
+          ...                params=device_name=${device_name}
+          ...                expected_status=any
+      END
 
       # Detailed debugging of the response
       Log    Upload response status: ${response.status_code}
