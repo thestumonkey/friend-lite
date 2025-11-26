@@ -39,6 +39,7 @@ async def upload_and_process_audio_files(
     files: list[UploadFile],
     device_name: str = "upload",
     auto_generate_client: bool = True,
+    folder: str = None,
 ) -> dict:
     """
     Upload audio files and process them directly.
@@ -47,6 +48,13 @@ async def upload_and_process_audio_files(
     1. Validate and read WAV file
     2. Write audio file and create AudioSession immediately
     3. Enqueue transcription job (same as WebSocket path)
+
+    Args:
+        user: Authenticated user
+        files: List of uploaded audio files
+        device_name: Device identifier
+        auto_generate_client: Whether to auto-generate client ID
+        folder: Optional subfolder for audio storage (e.g., 'fixtures')
     """
     try:
         if not files:
@@ -77,15 +85,24 @@ async def upload_and_process_audio_files(
                 audio_uuid = str(uuid.uuid4())
                 timestamp = int(time.time() * 1000)
 
+                # Determine output directory (with optional subfolder)
+                from advanced_omi_backend.config import CHUNK_DIR
+                if folder:
+                    chunk_dir = CHUNK_DIR / folder
+                    chunk_dir.mkdir(parents=True, exist_ok=True)
+                else:
+                    chunk_dir = CHUNK_DIR
+
                 # Validate, write audio file and create AudioSession (all in one)
                 try:
-                    wav_filename, file_path, duration = await write_audio_file(
+                    relative_audio_path, file_path, duration = await write_audio_file(
                         raw_audio_data=content,
                         audio_uuid=audio_uuid,
                         client_id=client_id,
                         user_id=user.user_id,
                         user_email=user.email,
                         timestamp=timestamp,
+                        chunk_dir=chunk_dir,
                         validate=True  # Validate WAV format, convert stereo→mono
                     )
                 except AudioValidationError as e:
@@ -97,7 +114,7 @@ async def upload_and_process_audio_files(
                     continue
 
                 audio_logger.info(
-                    f"📊 {file.filename}: {duration:.1f}s → {wav_filename}"
+                    f"📊 {file.filename}: {duration:.1f}s → {relative_audio_path}"
                 )
 
                 # Create conversation immediately for uploaded files (conversation_id auto-generated)
@@ -113,8 +130,8 @@ async def upload_and_process_audio_files(
                     title=title,
                     summary="Processing uploaded audio file..."
                 )
-                # Set audio_path so the frontend can play the audio
-                conversation.audio_path = wav_filename
+                # Use the relative path returned by write_audio_file (already includes folder prefix if applicable)
+                conversation.audio_path = relative_audio_path
                 await conversation.insert()
                 conversation_id = conversation.conversation_id  # Get the auto-generated ID
 
@@ -128,7 +145,8 @@ async def upload_and_process_audio_files(
                     audio_uuid=audio_uuid,
                     audio_file_path=file_path,
                     user_id=user.user_id,
-                    post_transcription=True  # Run batch transcription for uploads
+                    post_transcription=True,  # Run batch transcription for uploads
+                    client_id=client_id  # Pass client_id for UI tracking
                 )
 
                 processed_files.append({

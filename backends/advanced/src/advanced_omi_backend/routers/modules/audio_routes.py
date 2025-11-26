@@ -83,6 +83,7 @@ async def upload_audio_files(
     files: list[UploadFile] = File(...),
     device_name: str = Query(default="upload", description="Device name for uploaded files"),
     auto_generate_client: bool = Query(default=True, description="Auto-generate client ID"),
+    folder: Optional[str] = Query(default=None, description="Optional subfolder for audio storage (e.g., 'fixtures')"),
 ):
     """
     Upload and process audio files. Admin only.
@@ -95,5 +96,5 @@ async def upload_audio_files(
         - Summary of enqueued vs failed uploads
     """
     return await audio_controller.upload_and_process_audio_files(
-        current_user, files, device_name, auto_generate_client
+        current_user, files, device_name, auto_generate_client, folder
     )
