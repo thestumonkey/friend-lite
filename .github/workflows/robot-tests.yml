@@ -87,82 +87,38 @@ jobs:
         echo "LLM_PROVIDER: $LLM_PROVIDER"
         echo "TRANSCRIPTION_PROVIDER: $TRANSCRIPTION_PROVIDER"
 
-        # Start infrastructure services with CI compose file (no src mounts)
-        echo "Starting MongoDB, Redis, and Qdrant..."
-        DOCKER_BUILDKIT=1 docker compose -f docker-compose-ci.yml up -d --quiet-pull mongo-test redis-test qdrant-test 2>&1 | grep -v -E '(Preparing|Unpacking|Setting up|Selecting|processing|extracting)' || true
-
-        # Show running containers
-        docker compose -f docker-compose-ci.yml ps
-
-        # Wait for MongoDB with better error handling
-        echo "Waiting for MongoDB (up to 60s)..."
-        for i in {1..30}; do
-          if docker compose -f docker-compose-ci.yml exec -T mongo-test mongosh --eval "db.adminCommand({ping: 1})" > /dev/null 2>&1; then
-            echo "✓ MongoDB is ready"
-            break
-          fi
-          if [ $i -eq 30 ]; then
-            echo "✗ MongoDB failed to start"
-            docker compose -f docker-compose-ci.yml logs mongo-test
-            exit 1
-          fi
-          echo "Attempt $i/30..."
-          sleep 2
-        done
-
-        # Wait for Qdrant with better error handling (uses port 6337 in test env)
-        echo "Waiting for Qdrant (up to 60s)..."
-        for i in {1..30}; do
-          if curl -s http://localhost:6337/healthz > /dev/null 2>&1; then
-            echo "✓ Qdrant is ready"
-            break
-          fi
-          if [ $i -eq 30 ]; then
-            echo "✗ Qdrant failed to start"
-            docker compose -f docker-compose-ci.yml logs qdrant-test
-            exit 1
-          fi
-          echo "Attempt $i/30..."
-          sleep 2
-        done
-
         # Create memory_config.yaml from template (file is gitignored)
         echo "Creating memory_config.yaml from template..."
         cp memory_config.yaml.template memory_config.yaml
-        ls -la memory_config.yaml
 
-        # Start backend (depends on infrastructure)
-        echo "Starting backend (building with cache)..."
-        DOCKER_BUILDKIT=1 docker compose -f docker-compose-ci.yml build \
-          --cache-from type=local,src=/tmp/.buildx-cache \
-          --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-          friend-backend-test 2>&1 | grep -v -E '(Preparing|Unpacking|Setting up|Selecting|processing|extracting)' || true
+        # Clean any existing test containers for fresh start
+        echo "Cleaning up any existing test containers..."
+        docker compose -f docker-compose-test.yml down -v || true
 
-        # Move cache to avoid growing indefinitely
-        rm -rf /tmp/.buildx-cache
-        mv /tmp/.buildx-cache-new /tmp/.buildx-cache || true
+        # Start ALL services in parallel - Docker Compose handles dependencies via healthchecks
+        echo "Starting all services in parallel (docker-compose-test.yml)..."
+        echo "Note: Using test compose file with source mounts for faster startup"
+        DOCKER_BUILDKIT=0 docker compose -f docker-compose-test.yml up -d
 
-        # Debug: Check if file made it into the image
-        echo "Checking if memory_config.yaml is in the built image..."
-        docker compose -f docker-compose-ci.yml run --rm --no-deps friend-backend-test ls -la /app/memory_config.yaml || echo "File NOT in image!"
+        # Show container status
+        echo "Container status:"
+        docker compose -f docker-compose-test.yml ps
 
-        docker compose -f docker-compose-ci.yml up -d friend-backend-test
-
-        # Wait for backend to be ready
-        echo "Waiting for backend (up to 120s)..."
+        # Single wait for backend readiness (backend depends_on ensures infra is ready)
+        echo "Waiting for backend readiness (up to 120s)..."
         for i in {1..40}; do
-          if curl -s http://localhost:8001/health > /dev/null 2>&1; then
-            echo "✓ Backend is ready"
+          if curl -s http://localhost:8001/readiness > /dev/null 2>&1; then
+            echo "✓ Backend is ready (all dependencies satisfied)"
             break
           fi
           # Show logs every 10 attempts to help debug
           if [ $((i % 10)) -eq 0 ]; then
             echo "Still waiting... showing recent logs:"
-            docker compose -f docker-compose-ci.yml logs --tail=20 friend-backend-test
+            docker compose -f docker-compose-test.yml logs --tail=20 friend-backend-test
           fi
           if [ $i -eq 40 ]; then
             echo "✗ Backend failed to start - showing full logs:"
-            docker compose -f docker-compose-ci.yml logs friend-backend-test
+            docker compose -f docker-compose-test.yml logs
             exit 1
           fi
           echo "Attempt $i/40..."
@@ -171,50 +127,22 @@ jobs:
 
         echo "✓ Backend is ready!"
 
-        # Start workers AFTER backend is healthy
-        echo "Starting RQ workers (depends on backend being healthy)..."
-        docker compose -f docker-compose-ci.yml up -d workers-test
-
-        # Wait for workers container to start
-        echo "Waiting for workers container to start (up to 30s)..."
-        for i in {1..15}; do
-          if docker compose -f docker-compose-ci.yml ps workers-test | grep -q "Up"; then
-            echo "✓ Workers container is running"
-            break
-          fi
-          if [ $i -eq 15 ]; then
-            echo "✗ Workers container failed to start - showing logs:"
-            docker compose -f docker-compose-ci.yml logs workers-test
-            exit 1
-          fi
-          echo "Attempt $i/15..."
-          sleep 2
-        done
-
-        echo "✓ All services ready!"
-
-    - name: Verify workers are registered
-      working-directory: backends/advanced
-      env:
-        DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        LLM_PROVIDER: openai
-        TRANSCRIPTION_PROVIDER: deepgram
-        MEMORY_PROVIDER: friend_lite
-      run: |
+        # Verify workers are registered with Redis (Robot tests need stable workers)
         echo "Waiting for workers to register with Redis (up to 60s)..."
         for i in {1..30}; do
-          WORKER_COUNT=$(docker compose -f docker-compose-ci.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); print(len(Worker.all(connection=r)))' 2>/dev/null || echo "0")
+          WORKER_COUNT=$(docker compose -f docker-compose-test.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); print(len(Worker.all(connection=r)))' 2>/dev/null || echo "0")
 
           if [ "$WORKER_COUNT" -ge 6 ]; then
             echo "✓ Found $WORKER_COUNT workers registered"
+            # Show worker details
+            docker compose -f docker-compose-test.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); workers = Worker.all(connection=r); print(f"Total registered workers: {len(workers)}"); [print(f"  - {w.name}: queues={w.queue_names()}, state={w.get_state()}") for w in workers]'
             break
           fi
 
           if [ $i -eq 30 ]; then
             echo "✗ Workers failed to register after 60s"
             echo "Showing worker logs:"
-            docker compose -f docker-compose-ci.yml logs --tail=50 workers-test
+            docker compose -f docker-compose-test.yml logs --tail=50 workers-test
             exit 1
           fi
 
@@ -222,11 +150,7 @@ jobs:
           sleep 2
         done
 
-        echo ""
-        echo "Checking registered workers:"
-        docker compose -f docker-compose-ci.yml exec -T workers-test uv run python -c 'from rq import Worker; from redis import Redis; import os; r = Redis.from_url(os.getenv("REDIS_URL", "redis://redis-test:6379/0")); workers = Worker.all(connection=r); print(f"Total registered workers: {len(workers)}"); [print(f"  - {w.name}: queues={w.queue_names()}, state={w.get_state()}") for w in workers]'
-
-        echo "✓ Workers registered and ready"
+        echo "✓ All services ready!"
 
     - name: Run Robot Framework tests
       working-directory: tests
@@ -245,10 +169,10 @@ jobs:
       working-directory: backends/advanced
       run: |
         echo "=== Backend Logs (last 50 lines) ==="
-        docker compose -f docker-compose-ci.yml logs --tail=50 friend-backend-test
+        docker compose -f docker-compose-test.yml logs --tail=50 friend-backend-test
         echo ""
         echo "=== Worker Logs (last 50 lines) ==="
-        docker compose -f docker-compose-ci.yml logs --tail=50 workers-test
+        docker compose -f docker-compose-test.yml logs --tail=50 workers-test
 
     - name: Check if test results exist
       if: always()
@@ -409,4 +333,4 @@ jobs:
       if: always()
       working-directory: backends/advanced
       run: |
-        docker compose -f docker-compose-ci.yml down -v
+        docker compose -f docker-compose-test.yml down -v
