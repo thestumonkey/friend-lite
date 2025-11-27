@@ -11,6 +11,7 @@ Resource         ../resources/queue_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
 Test Setup       Test Cleanup
+
 *** Test Cases ***
 
 Get User Conversations Test
@@ -155,25 +156,34 @@ Invalid Conversation Operations Test
     Should Be Equal As Integers    ${response.status_code}    404
 
 Transcript Version activate Test
-    [Documentation]    Test version activation (if versions exist)
+    [Documentation]    Test version activation using oldest conversation for stability
     [Tags]    conversation
 
+    # Find Test Conversation now returns the oldest conversation (most stable)
     ${test_conversation}=    Find Test Conversation
-
     ${conversation_id}=    Set Variable    ${test_conversation}[conversation_id]
+
+    # Small delay to let any ongoing jobs from previous tests complete
+    Sleep    2s
+
     ${versions}=    Get Conversation Versions    ${conversation_id}
+
+    # Ensure we have at least 2 versions by reprocessing if needed
     IF     len(${versions}) < 2
         ${reprocess}=    Reprocess Transcript     ${conversation_id}
-            # Wait for the reprocess job to complete before getting versions
+        # Wait for the reprocess job to complete before getting versions
         ${job_id}=    Set Variable    ${reprocess}[job_id]
         Wait For Job Status    ${job_id}    completed    timeout=120s    interval=5s
     END
 
+    # Get fresh version list after reprocessing
     ${versions}=  Get Conversation Versions     ${conversation_id}
-    # Test activating existing active version (should succeed)
-    ${active_transcript}=  Set Variable    ${test_conversation}[active_transcript_version]
-    ${response}=       Activate Transcript Version      ${conversation_id}    ${versions}[1][version_id]
-     Should Be Equal As Strings    ${response}[active_transcript_version]   ${versions}[1][version_id]  
+    Should Be True    len(${versions}) >= 2    msg=Should have at least 2 versions after reprocessing
+
+    # Test activating a different version (activate version index 1)
+    ${target_version}=    Set Variable    ${versions}[1][version_id]
+    ${response}=       Activate Transcript Version      ${conversation_id}    ${target_version}
+    Should Be Equal As Strings    ${response}[active_transcript_version]   ${target_version}  
 
 
         # ${active_memory}=     Get memory versions  

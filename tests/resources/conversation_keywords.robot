@@ -167,7 +167,8 @@ Verify Transcript Content
     Log    Transcript verification passed: ${transcript_length} chars, ${segment_count} segments    INFO
 
 Find Test Conversation
-    [Documentation]    Find an existing conversation or create one if none exist (uses admin session)
+    [Documentation]    Find the oldest (earliest created) conversation or create one if none exist
+    ...                Returns the first conversation in the list, which should be the oldest/fixture
     ${conversations_data}=    Get User Conversations
     Log    Retrieved conversations data: ${conversations_data}
 
@@ -175,8 +176,11 @@ Find Test Conversation
     ${count}=    Get Length    ${conversations_data}
 
     IF    ${count} > 0
-        ${first_conv}=    Set Variable    ${conversations_data}[0]
-        RETURN    ${first_conv}
+        # Sort by created_at to get oldest conversation first (most stable for tests)
+        ${sorted_convs}=    Evaluate    sorted($conversations_data, key=lambda x: x.get('created_at', ''))
+        ${oldest_conv}=    Set Variable    ${sorted_convs}[0]
+        Log    Using oldest conversation (created_at: ${oldest_conv}[created_at])
+        RETURN    ${oldest_conv}
     END
 
     # If no conversations exist, create one by uploading test audio
@@ -234,9 +238,10 @@ Get Fixture Conversation
     ...                Use this in tests that need an existing conversation without creating one
     ...                Returns the full conversation object
 
-    ${fixture_id}=    Get Variable Value    ${FIXTURE_CONVERSATION_ID}    ${None}
+    # Check if fixture was created (uses Get Variable Value to avoid errors if not set)
+    ${fixture_id}=    Get Variable Value    ${FIXTURE_CONVERSATION_ID}    ${EMPTY}
 
-    IF    '${fixture_id}' == '${None}'
+    IF    '${fixture_id}' == '${EMPTY}'
         Fail    Fixture conversation not created. Call 'Create Fixture Conversation' in suite setup first.
     END
 
