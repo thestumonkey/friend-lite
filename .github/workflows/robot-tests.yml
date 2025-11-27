@@ -98,6 +98,14 @@ jobs:
         # Start ALL services in parallel - Docker Compose handles dependencies via healthchecks
         echo "Starting all services in parallel (docker-compose-test.yml)..."
         echo "Note: Using test compose file with source mounts for faster startup"
+
+        # Export API keys so docker-compose can use them
+        export DEEPGRAM_API_KEY
+        export OPENAI_API_KEY
+        export LLM_PROVIDER
+        export TRANSCRIPTION_PROVIDER
+        export MEMORY_PROVIDER
+
         DOCKER_BUILDKIT=0 docker compose -f docker-compose-test.yml up -d
 
         # Show container status
