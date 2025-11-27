@@ -369,9 +369,10 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
         pending_chunks_total = count_pending_chunks()
     except Exception as exc:
         tqdm.write(f'Pending chunk count unavailable: {exc}')
+        tqdm.write('Chunks processed=0, remaining=?')
     else:
         if pending_chunks_total is not None:
-            tqdm.write(f'Pending chunks: {pending_chunks_total}')
+            tqdm.write(f'Chunks processed=0, remaining={pending_chunks_total}')
         else:
             tqdm.write('Pending chunk count unavailable')
 
@@ -409,15 +410,15 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
             if pending_chunks_total is not None:
                 remaining_chunks = max(pending_chunks_total - completed_chunks, 0)
             eta_seconds = (remaining_chunks / chunk_rate) if chunk_rate and remaining_chunks is not None and chunk_rate > 0 else None
-            chunk_target_display = pending_chunks_total if pending_chunks_total is not None else '?'
-            chunk_display = f"{completed_chunks}/{chunk_target_display}"
+            remaining_display = remaining_chunks if remaining_chunks is not None else '?'
 
             pbar.set_postfix(
                 diarized=stats['diarized'],
                 no_segments=stats['no_segments'],
                 errors=stats['error'],
                 skipped=stats['skipped'],
-                chunks=chunk_display,
+                done=completed_chunks,
+                remaining=remaining_display,
                 rate=f"{chunk_rate:.1f}/s" if chunk_rate else 'n/a',
                 eta=_format_eta(eta_seconds),
                 segments=total_segments
