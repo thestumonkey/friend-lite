@@ -12,7 +12,7 @@ from lib.worker import setup_worker_logging, get_worker_id, mongo_cursor, claim_
 
 logger = setup_worker_logging('diarization_worker')
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
 from datetime import timedelta
@@ -31,7 +31,7 @@ from chunking import read_codec, array_to_wav, sample_rate
 
 class DiarizationSequence(BaseModel):
     original_id: ObjectId
-    chunks: list[Any] = []
+    chunks: list[Any] = Field(default_factory=list)
     is_partial: bool = False
     is_continuation: bool = False
 
@@ -356,11 +356,6 @@ def mark_as_diarized(seq: DiarizationSequence) -> int:
     return len(chunks_to_mark)
 
 
-def process_sequence(sequence: DiarizationSequence, worker_id: str):
-    """Wrapper for diarize_sequence to match stt.py pattern."""
-    return diarize_sequence(sequence, worker_id)
-
-
 def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     if worker_id is None:
         worker_id = get_worker_id()
@@ -382,7 +377,6 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
 
     processed_count = 0
     stats = {'diarized': 0, 'no_segments': 0, 'error': 0, 'skipped': 0}
-    sequence_chunks_total = 0
     completed_chunks = 0
     total_segments = 0
     batch_size = min(limit if limit else 1000, 1000)
@@ -394,13 +388,12 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     with tqdm(total=total, desc="Processing", unit="seq", bar_format=bar_format) as pbar:
 
         def record_result(result: dict[str, Any]) -> bool:
-            nonlocal processed_count, sequence_chunks_total, completed_chunks, total_segments
+            nonlocal processed_count, completed_chunks, total_segments
             status = result["status"]
 
             if status in stats:
                 stats[status] += 1
 
-            sequence_chunks_total += result.get("chunks", 0)
             total_segments += result.get("segments", 0)
             completed_chunks += result.get("chunks_diarized", 0)
 
@@ -432,42 +425,38 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
 
             return counted
 
-        if max_workers == 1:
+        executor: Optional[ThreadPoolExecutor] = None
+        if max_workers and max_workers > 1:
+            executor = ThreadPoolExecutor(max_workers=max_workers)
+
+        try:
             while True:
-                batch_processed = 0
-                for sequence in get_diarization_sequences(limit=batch_size, worker_id=worker_id):
-                    result = process_sequence(sequence, worker_id)
-                    if record_result(result):
-                        batch_processed += 1
-
-                    if limit and processed_count >= limit:
-                        break
-
-                if limit and processed_count >= limit:
-                    break
-
-                if batch_processed == 0:
+                sequences = list(get_diarization_sequences(limit=batch_size, worker_id=worker_id))
+                if not sequences:
                     tqdm.write("\nNo more sequences to process")
                     break
-        else:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                while True:
-                    sequences = list(get_diarization_sequences(limit=batch_size, worker_id=worker_id))
-                    if not sequences:
-                        tqdm.write("\nNo more sequences to process")
-                        break
 
-                    futures = {executor.submit(process_sequence, seq, worker_id): seq for seq in sequences}
-
+                if executor:
+                    futures = [executor.submit(diarize_sequence, seq, worker_id) for seq in sequences]
                     for future in concurrent.futures.as_completed(futures):
                         result = future.result()
                         record_result(result)
 
                         if limit and processed_count >= limit:
                             break
+                else:
+                    for sequence in sequences:
+                        result = diarize_sequence(sequence, worker_id)
+                        record_result(result)
 
-                    if limit and processed_count >= limit:
-                        break
+                        if limit and processed_count >= limit:
+                            break
+
+                if limit and processed_count >= limit:
+                    break
+        finally:
+            if executor:
+                executor.shutdown(wait=True)
 
     tqdm.write("\n" + "=" * 80)
     tqdm.write(f"Completed: {processed_count} sequences, {completed_chunks} chunks, {total_segments} segments")
