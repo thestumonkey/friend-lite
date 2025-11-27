@@ -138,10 +138,6 @@ Cleanup Speaker Recognition Service
 Test Cleanup
     [Documentation]    Standard test teardown - flush in-progress jobs and cleanup streams
     ...                Use this as Test Teardown for all tests
-    TRY
-        # Try to cleanup audio streams if the keyword exists (websocket tests)
-        Run Keyword    Cleanup All Audio Streams
-    EXCEPT
-        Log    No audio streams to cleanup
-    END
+    # Try to cleanup audio streams if the keyword exists (websocket tests)
+    Run Keyword And Ignore Error    Cleanup All Audio Streams
     Flush In Progress Jobs

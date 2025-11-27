@@ -623,17 +623,30 @@ async def flush_all_jobs(
 
                 for job_id in job_ids:
                     try:
-                        # Try to fetch and delete the job
+                        # Try to fetch the job
                         job = Job.fetch(job_id, connection=redis_conn)
 
-                        # Cancel if running, then delete
+                        # Handle running jobs differently to avoid worker deadlock
                         if job.is_started:
+                            # Send stop command to worker instead of canceling/deleting immediately
+                            # This lets the worker clean up gracefully and prevents deadlock
                             try:
-                                job.cancel()
-                                logger.info(f"Cancelled running job {job_id}")
-                            except Exception as cancel_error:
-                                logger.warning(f"Could not cancel job {job_id}: {cancel_error}")
+                                from rq.command import send_stop_job_command
+                                send_stop_job_command(redis_conn, job_id)
+                                logger.info(f"Sent stop command to worker for job {job_id}")
+                                # Don't delete yet - let worker move it to canceled/failed registry
+                                # It will be cleaned up on next flush or by worker cleanup
+                                continue
+                            except Exception as stop_error:
+                                logger.warning(f"Could not send stop command to job {job_id}: {stop_error}")
+                                # If stop fails, try to cancel it (may already be finishing)
+                                try:
+                                    job.cancel()
+                                    logger.info(f"Cancelled job {job_id} after stop failed")
+                                except Exception as cancel_error:
+                                    logger.warning(f"Could not cancel job {job_id}: {cancel_error}")
 
+                        # For non-running jobs, safe to delete immediately
                         job.delete()
                         total_removed += 1
 
