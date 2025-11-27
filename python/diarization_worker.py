@@ -98,6 +98,25 @@ def count_pending_chunks(filters: Optional[dict[str, Any]] = None) -> Optional[i
     return int(result) if result is not None else None
 
 
+def count_pending_sequences(filters: Optional[dict[str, Any]] = None) -> Optional[int]:
+    """
+    Estimate how many distinct originals still have pending chunks.
+    """
+    pipeline = [
+        {"$match": _build_pending_chunk_filters(filters)},
+        {"$group": {"_id": "$original_id"}},
+        {"$count": "total"},
+    ]
+    result = call_resource('tech.mycelia.mongo', {
+        "action": "aggregate",
+        "collection": "audio_chunks",
+        "pipeline": pipeline,
+    })
+    if not result:
+        return 0
+    return int(result[0].get('total', 0))
+
+
 def _format_eta(seconds: Optional[float]) -> str:
     if seconds is None or not math.isfinite(seconds) or seconds <= 0:
         return 'n/a'
@@ -253,7 +272,12 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
             chunks_marked = mark_as_diarized(sequence)
             end_time = time.time()
             duration = end_time - start_time
-            tqdm.write(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  {duration:5.2f}s  no_segments')
+            chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
+            chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
+            tqdm.write(
+                f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
+                f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  no_segments'
+            )
             return {
                 "status": "no_segments",
                 "chunks": chunks_count,
@@ -299,7 +323,12 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
 
         end_time = time.time()
         duration = end_time - start_time
-        tqdm.write(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  {duration:5.2f}s  diarized  {saved_segments} segments')
+        chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
+        chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
+        tqdm.write(
+            f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
+            f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  diarized  {saved_segments} segments'
+        )
         return {
             "status": "diarized",
             "chunks": chunks_count,
@@ -364,17 +393,31 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     tqdm.write(f'Using {max_workers} parallel worker(s)')
     tqdm.write(f'Diarization server: {DIARIZATION_SERVER_URL}')
 
+    pending_sequences_total: Optional[int] = None
     pending_chunks_total: Optional[int] = None
+
+    try:
+        pending_sequences_total = count_pending_sequences()
+    except Exception as exc:
+        tqdm.write(f'Pending sequence count unavailable: {exc}')
+
     try:
         pending_chunks_total = count_pending_chunks()
     except Exception as exc:
         tqdm.write(f'Pending chunk count unavailable: {exc}')
-        tqdm.write('Chunks processed=0, remaining=?')
+
+    pending_parts = []
+    if pending_sequences_total is not None:
+        pending_parts.append(f'sequences={pending_sequences_total}')
+    if pending_chunks_total is not None:
+        pending_parts.append(f'chunks={pending_chunks_total}')
+
+    if pending_parts:
+        tqdm.write('Pending work: ' + ', '.join(pending_parts))
     else:
-        if pending_chunks_total is not None:
-            tqdm.write(f'Chunks processed=0, remaining={pending_chunks_total}')
-        else:
-            tqdm.write('Pending chunk count unavailable')
+        tqdm.write('Pending work: unknown (unable to query MongoDB)')
+
+    tqdm.write('Initial metrics: processed_chunks=0, chunk_rate=0.00 ch/s, eta=n/a')
 
     processed_count = 0
     stats = {'diarized': 0, 'no_segments': 0, 'error': 0, 'skipped': 0}
@@ -384,7 +427,7 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     run_start_time = time.time()
 
     total = limit if limit else None
-    bar_format = '{n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}, {postfix}]' if total else '{n_fmt} [{elapsed}, {rate_fmt}, {postfix}]'
+    bar_format = '{n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]' if total else '{n_fmt} [{elapsed}, {rate_fmt}{postfix}]'
 
     with tqdm(total=total, desc="Processing", unit="seq", bar_format=bar_format) as pbar:
 
@@ -405,21 +448,20 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
             pbar.update(1)
 
             elapsed = max(time.time() - run_start_time, 0.0)
-            chunk_rate = (completed_chunks / elapsed) if completed_chunks and elapsed > 0 else None
+            chunks_per_sec = (completed_chunks / elapsed) if completed_chunks and elapsed > 0 else None
             remaining_chunks = None
             if pending_chunks_total is not None:
                 remaining_chunks = max(pending_chunks_total - completed_chunks, 0)
-            eta_seconds = (remaining_chunks / chunk_rate) if chunk_rate and remaining_chunks is not None and chunk_rate > 0 else None
-            remaining_display = remaining_chunks if remaining_chunks is not None else '?'
+            eta_seconds = (remaining_chunks / chunks_per_sec) if chunks_per_sec and remaining_chunks is not None and chunks_per_sec > 0 else None
 
             pbar.set_postfix(
                 diarized=stats['diarized'],
                 no_segments=stats['no_segments'],
                 errors=stats['error'],
                 skipped=stats['skipped'],
+                seqs=processed_count,
                 done=completed_chunks,
-                remaining=remaining_display,
-                rate=f"{chunk_rate:.1f}/s" if chunk_rate else 'n/a',
+                chunks_per_sec=f"{chunks_per_sec:.2f}" if chunks_per_sec else 'n/a',
                 eta=_format_eta(eta_seconds),
                 segments=total_segments
             )
