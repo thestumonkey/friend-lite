@@ -30,6 +30,7 @@ import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 DIARIZATION_SERVER_URL = os.environ.get('DIARIZATION_SERVER_URL', 'http://localhost:8085').rstrip('/')
+MAX_SEQUENCE_CHUNKS = max(1, int(os.environ.get('DIARIZATION_MAX_SEQUENCE_CHUNKS', '10')))
 
 import numpy as np
 from chunking import read_codec, array_to_wav, sample_rate
@@ -130,7 +131,7 @@ def _format_eta(seconds: Optional[float]) -> str:
 
 
 
-def get_diarization_sequences(limit=10, filters=None, max_sequence_length=30, worker_id=None) -> Iterator[DiarizationSequence]:
+def get_diarization_sequences(limit=10, filters=None, max_sequence_length=MAX_SEQUENCE_CHUNKS, worker_id=None) -> Iterator[DiarizationSequence]:
     sequences_by_id: dict[ObjectId, DiarizationSequence] = {}
     yielded = 0
 
@@ -391,13 +392,15 @@ def mark_as_diarized(seq: DiarizationSequence) -> int:
     return len(chunks_to_mark)
 
 
-def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
+def process_diarization_sequences(limit=None, max_workers=1, worker_id=None, max_sequence_length=None):
     if worker_id is None:
         worker_id = get_worker_id()
 
     log_info(f'Worker ID: {worker_id}')
     log_info(f'Using {max_workers} parallel worker(s)')
     log_info(f'Diarization server: {DIARIZATION_SERVER_URL}')
+    effective_max_sequence_length = max_sequence_length if max_sequence_length and max_sequence_length > 0 else MAX_SEQUENCE_CHUNKS
+    log_info(f'Max chunks per request: {effective_max_sequence_length}')
 
     pending_sequences_total: Optional[int] = None
     pending_chunks_total: Optional[int] = None
@@ -477,9 +480,13 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
 
         try:
             while True:
-                sequences = list(get_diarization_sequences(limit=batch_size, worker_id=worker_id))
-                if not sequences:
-                    log_info("\nNo more sequences to process")
+                sequences = list(
+                    get_diarization_sequences(
+                        limit=batch_size,
+                        worker_id=worker_id,
+                        max_sequence_length=effective_max_sequence_length
+                    )
+                )
                 if not sequences:
                     log_info("\nNo more sequences to process")
                     break
@@ -515,5 +522,11 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=None)
+    parser.add_argument(
+        '--max-chunks',
+        type=int,
+        default=MAX_SEQUENCE_CHUNKS,
+        help='Maximum number of chunks to combine per diarization request'
+    )
     args = parser.parse_args()
-    process_diarization_sequences(limit=args.limit, max_workers=1)
+    process_diarization_sequences(limit=args.limit, max_workers=1, max_sequence_length=args.max_chunks)
