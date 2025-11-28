@@ -18,30 +18,6 @@ def log_info(message: str):
     tqdm.write(message)
     logger.info(message)
 
-
-def _int_env(name: str, default: int, minimum: Optional[int] = None) -> int:
-    """
-    Read an integer from the environment with validation.
-    """
-    raw_value = os.environ.get(name)
-    if raw_value is None or raw_value == '':
-        result = default
-    else:
-        try:
-            result = int(raw_value)
-        except ValueError:
-            log_info(f'{name} environment value "{raw_value}" is invalid; using default {default}')
-            result = default
-
-    if minimum is not None and result < minimum:
-        log_info(f'{name}={result} is below minimum {minimum}; using {minimum}')
-        result = minimum
-    return result
-
-
-DEFAULT_MAX_SEQUENCE_LENGTH = _int_env('DIARIZATION_MAX_SEQUENCE_LENGTH', 20, minimum=1)
-MAX_WAV_UPLOAD_BYTES = _int_env('DIARIZATION_MAX_WAV_BYTES', 20 * 1024 * 1024, minimum=1024)
-
 from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
