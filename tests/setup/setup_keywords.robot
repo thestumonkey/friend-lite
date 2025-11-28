@@ -19,10 +19,10 @@ Library          Collections
 Library          OperatingSystem
 Library          String
 Library          Process
-Library          DateTime
 Variables        test_env.py
-Resource         ../resources/session_resources.robot
-Resource         ../resources/conversation_keywords.robot
+Resource         ../resources/session_keywords.robot
+Resource         test_manager_keywords.robot
+
 
 
 *** Keywords ***
@@ -53,23 +53,14 @@ Dev Mode Setup
     [Documentation]    Default development mode - reuse containers, clear data only (fastest)
     Log To Console    \n=== Dev Mode Setup (Default) ===
 
-    ${is_up}=    Run Keyword And Return Status    Readiness Check    ${API_URL}
+    ${is_up}=    Run Keyword And Return Status    Check Services Ready    ${API_URL}
 
     IF    ${is_up}
         Log To Console    ✓ Reusing existing containers (fast mode)
         Clear Test Databases
     ELSE
         Log To Console    ⚠ Containers not running, starting them...
-
-        # Clean up any stopped/stuck containers first
-        Run Process    docker    compose    -f    docker-compose-ci.yml    down    -v    cwd=backends/advanced    shell=True
-        Run Process    docker    rm    -f    advanced-mongo-test-1    advanced-redis-test-1    advanced-qdrant-test-1    advanced-friend-backend-test-1    advanced-workers-test-1    shell=True
-
-        # Start containers
-        Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    cwd=backends/advanced    shell=True
-
-        Log To Console    Waiting for services to be ready...
-        Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
+        Start Docker Services
         Clear Test Databases
     END
 
@@ -78,12 +69,8 @@ Dev Mode Setup
 Dev Mode Setup With Rebuild
     [Documentation]    Dev mode with forced rebuild (after code changes)
     Log To Console    \n=== Dev Mode Setup (with rebuild) ===
-    Log To Console    Rebuilding containers with latest code...
 
-    Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
-
-    Log To Console    Waiting for services to be ready...
-    Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
+    Rebuild Docker Services
 
     Log To Console    Clearing test data...
     Clear Test Databases
@@ -94,132 +81,93 @@ Prod Mode Setup
     Log To Console    \n=== Prod Mode Setup (CI/CD) ===
     Log To Console    Tearing down existing containers and volumes...
 
-    Run Process    docker    compose    -f    docker-compose-ci.yml    down    -v    cwd=backends/advanced    shell=True
+    Stop Docker Services    remove_volumes=${True}
     Run Process    rm    -rf    data/test_mongo_data    data/test_qdrant_data    data/test_audio_chunks    cwd=backends/advanced    shell=True
 
     Log To Console    Building and starting fresh containers...
-    Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
+    Start Docker Services    build=${True}
 
-    Log To Console    Waiting for services to be ready...
-    Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
     Log To Console    ✓ Prod environment ready!
 
-# Legacy keywords for backward compatibility
-Fresh Environment Setup
-    [Documentation]    DEPRECATED: Use 'Prod Mode Setup' instead
-    Prod Mode Setup
+Start Docker Services
+    [Documentation]    Start Docker services using docker-compose
+    ...                Checks if services are already running to avoid redundant starts
+    [Arguments]    ${compose_file}=docker-compose-ci.yml    ${working_dir}=backends/advanced    ${build}=${False}
 
-Rebuild Environment Setup
-    [Documentation]    DEPRECATED: Use 'Dev Mode Setup With Rebuild' instead
-    Dev Mode Setup With Rebuild
+    ${is_up}=    Run Keyword And Return Status    Check Services Ready    ${API_URL}
 
-Fast Development Setup
-    [Documentation]    DEPRECATED: Use 'Dev Mode Setup' instead
-    Dev Mode Setup
-
-Start advanced-server
-    [Documentation]    Start the server using docker compose (legacy compatibility)
-    ${is_up}=    Run Keyword And Return Status    Readiness Check    ${API_URL}
     IF    ${is_up}
-        Log    advanced-server is already running
+        Log    Services already running, skipping start
         RETURN
-    ELSE
-        Log    Starting advanced-server
-        Run Process    docker    compose    -f    docker-compose-ci.yml    up    -d    --build    cwd=backends/advanced    shell=True
-        Log    Waiting for services to start...
-        Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${API_URL}
-        Log    Services are ready
     END
 
-Stop advanced-server
-    [Documentation]    Stop the server using docker compose (legacy compatibility)
-    Run Process    docker    compose    -f    docker-compose-ci.yml    down    cwd=backends/advanced    shell=True
+    # Clean up any stopped/stuck containers first
+    Run Process    docker    compose    -f    ${compose_file}    down    -v    cwd=${working_dir}    shell=True
+    Run Process    docker    rm    -f    advanced-mongo-test-1    advanced-redis-test-1    advanced-qdrant-test-1    advanced-friend-backend-test-1    advanced-workers-test-1    shell=True
 
-Start speaker-recognition-service
+    # Start containers
+    IF    ${build}
+        Run Process    docker    compose    -f    ${compose_file}    up    -d    --build    cwd=${working_dir}    shell=True
+    ELSE
+        Run Process    docker    compose    -f    ${compose_file}    up    -d    cwd=${working_dir}    shell=True
+    END
+
+    Log    Waiting for services to be ready...
+    Wait Until Keyword Succeeds    60s    5s    Check Services Ready    ${API_URL}
+
+Stop Docker Services
+    [Documentation]    Stop Docker services using docker-compose
+    [Arguments]    ${compose_file}=docker-compose-ci.yml    ${working_dir}=backends/advanced    ${remove_volumes}=${False}
+
+    IF    ${remove_volumes}
+        Run Process    docker    compose    -f    ${compose_file}    down    -v    cwd=${working_dir}    shell=True
+    ELSE
+        Run Process    docker    compose    -f    ${compose_file}    down    cwd=${working_dir}    shell=True
+    END
+
+Rebuild Docker Services
+    [Documentation]    Rebuild and restart Docker services
+    [Arguments]    ${compose_file}=docker-compose-ci.yml    ${working_dir}=backends/advanced
+
+    Log To Console    Rebuilding containers with latest code...
+    Run Process    docker    compose    -f    ${compose_file}    up    -d    --build    cwd=${working_dir}    shell=True
+
+    Log To Console    Waiting for services to be ready...
+    Wait Until Keyword Succeeds    60s    5s    Check Services Ready    ${API_URL}
+    Log To Console    ✓ Services rebuilt and ready!
+
+Check Services Ready
+    [Documentation]    Check if services are ready via readiness endpoint
+    [Arguments]    ${base_url}=${API_URL}
+
+    ${status}=    Run Keyword And Return Status    Readiness Check    ${base_url}
+    RETURN    ${status}
+
+Start Speaker Recognition Service
     [Documentation]    Start the speaker recognition service using docker compose
-    ${is_up}=    Run Keyword And Return Status    Readiness Check    ${SPEAKER_RECOGNITION_URL}
+    ${is_up}=    Run Keyword And Return Status    Check Services Ready    ${SPEAKER_RECOGNITION_URL}
+
     IF    ${is_up}
         Log    speaker-recognition-service is already running
         RETURN
-    ELSE
-        Log    Starting speaker-recognition-service
-        Run Process    docker    compose    -f    extras/speaker-recognition/docker-compose-test.yml    up    -d    --build    shell=True
-        Log    Waiting for speaker recognition service to start...
-        Wait Until Keyword Succeeds    60s    5s    Readiness Check    ${SPEAKER_RECOGNITION_URL}
-        Log    Speaker recognition service is ready
     END
 
-Readiness Check
-    [Documentation]    Verify that the readiness endpoint is accessible
-    [Tags]             health    api
-    [Arguments]        ${base_url}=${API_URL}
+    Log    Starting speaker-recognition-service
+    Run Process    docker    compose    -f    extras/speaker-recognition/docker-compose-test.yml    up    -d    --build    shell=True
 
-    ${response}=    GET    ${base_url}/readiness    expected_status=200
-    Should Be Equal As Integers    ${response.status_code}    200
-    RETURN    ${True}
+    Log    Waiting for speaker recognition service to start...
+    Wait Until Keyword Succeeds    60s    5s    Check Services Ready    ${SPEAKER_RECOGNITION_URL}
+    Log    Speaker recognition service is ready
 
-Health Check
-    [Documentation]    Verify that the health endpoint is accessible
-    [Tags]             health    api
-    [Arguments]        ${base_url}=${API_URL}
+Stop Speaker Recognition Service
+    [Documentation]    Stop the speaker recognition service
+    [Arguments]    ${remove_volumes}=${False}
 
-    ${response}=    GET    ${base_url}/health    expected_status=200
-    Should Be Equal As Integers    ${response.status_code}    200
-    RETURN    ${True}
-
-Clear Test Databases
-    [Documentation]    Quickly clear test databases and audio files without restarting containers (preserves admin user and fixture conversations tagged with is_fixture=true)
-    Log To Console    Clearing test databases and audio files...
-
-    # Clear MongoDB collections but preserve admin user and fixtures
-    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.users.deleteMany({'email': {\\$ne:'${ADMIN_EMAIL}'}})"    shell=True
-
-    # Clear conversations and audio_chunks except those tagged as fixtures
-    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.deleteMany({\\$or: [{'is_fixture': {\\$exists: false}}, {'is_fixture': false}]})"    shell=True
-    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.audio_chunks.deleteMany({\\$or: [{'is_fixture': {\\$exists: false}}, {'is_fixture': false}]})"    shell=True
-
-    # Count fixtures for logging
-    ${result}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.countDocuments({'is_fixture': true})" --quiet    shell=True
-    ${fixture_count}=    Strip String    ${result.stdout}
-
-    IF    '${fixture_count}' != '0'
-        Log To Console    MongoDB cleared (preserved admin user + ${fixture_count} fixture conversation(s))
+    IF    ${remove_volumes}
+        Run Process    docker    compose    -f    extras/speaker-recognition/docker-compose-test.yml    down    -v    shell=True
     ELSE
-        Log To Console    MongoDB cleared (preserved admin user only)
+        Run Process    docker    compose    -f    extras/speaker-recognition/docker-compose-test.yml    down    shell=True
     END
-
-    # Clear admin user's registered_clients dict to prevent client_id counter increments
-    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.users.updateOne({'email':'${ADMIN_EMAIL}'}, {\\$set: {'registered_clients': {}}})"    shell=True
-
-    # Clear Qdrant collections
-    # Note: Fixture memories will be lost here unless we implement Qdrant metadata filtering
-    Run Process    curl    -s    -X    DELETE    http://localhost:6337/collections/memories    shell=True
-    Run Process    curl    -s    -X    DELETE    http://localhost:6337/collections/conversations    shell=True
-    Log To Console    Qdrant collections cleared
-
-    # Clear audio files (except fixtures subfolder)
-    Run Process    bash    -c    find ${EXECDIR}/backends/advanced/data/test_audio_chunks -maxdepth 1 -name "*.wav" -delete || true    shell=True
-    Run Process    bash    -c    rm -rf ${EXECDIR}/backends/advanced/data/test_debug_dir/* || true    shell=True
-    Log To Console    Audio files cleared (fixtures/ subfolder preserved)
-
-    # Clear container audio files (except fixtures subfolder)
-    Run Process    bash    -c    docker exec advanced-friend-backend-test-1 find /app/audio_chunks -maxdepth 1 -name "*.wav" -delete || true    shell=True
-    Run Process    bash    -c    docker exec advanced-friend-backend-test-1 find /app/debug_dir -name "*" -type f -delete || true    shell=True
-
-    # Clear Redis queues and job registries (preserve worker registrations, failed and completed jobs)
-    # Delete all rq:* keys except worker registrations (rq:worker:*), failed jobs (rq:failed:*), and completed jobs (rq:finished:*)
-    ${redis_clear_script}=    Set Variable    redis-cli --scan --pattern "rq:*" | grep -Ev "^rq:(worker|failed|finished)" | xargs -r redis-cli DEL; redis-cli --scan --pattern "audio:*" | xargs -r redis-cli DEL; redis-cli --scan --pattern "consumer:*" | xargs -r redis-cli DEL
-    Run Process    docker    exec    advanced-redis-test-1    sh    -c    ${redis_clear_script}    shell=True
-    Log To Console    Redis queues and job registries cleared (worker registrations preserved)
-
-Reset Data Without Restart
-    [Documentation]    Ultra-fast reset for rapid iteration (alias for Clear Test Databases)
-    Clear Test Databases
-
-Get Random ID
-    [Documentation]    Generate a unique random ID for test data (call each time for new ID)
-    ${random_id}=    Generate Random String    8    [LETTERS][NUMBERS]
-    RETURN    ${random_id}
 
 Check Environment Variables
     [Documentation]    Check required environment variables and return missing ones
@@ -236,9 +184,3 @@ Check Environment Variables
     END
     RETURN    ${missing_vars}
 
-Log Test Phase
-    [Documentation]    Log the current test phase with timing
-    [Arguments]    ${phase_name}
-
-    ${timestamp}=    Get Current Date    result_format=%Y-%m-%d %H:%M:%S
-    Log    === PHASE: ${phase_name} (${timestamp}) ===    INFO

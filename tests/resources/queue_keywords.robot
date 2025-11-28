@@ -3,7 +3,7 @@ Documentation    Queue Management Keywords
 Library          RequestsLibrary
 Library          Collections
 Variables        ../setup/test_env.py
-Resource         session_resources.robot
+Resource         session_keywords.robot
 
 *** Keywords ***
 

@@ -8,8 +8,8 @@ Library             String
 Library             DateTime
 Resource            ../setup/setup_keywords.robot
 Resource            ../setup/teardown_keywords.robot
-Resource            ../resources/session_resources.robot
-Resource            ../resources/user_resources.robot
+Resource            ../resources/session_keywords.robot
+Resource            ../resources/user_keywords.robot
 Resource            ../resources/conversation_keywords.robot
 Resource            ../resources/queue_keywords.robot
 Variables           ../setup/test_env.py

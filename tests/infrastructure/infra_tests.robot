@@ -16,7 +16,7 @@ Library          OperatingSystem
 Library          DateTime
 Resource         ../setup/setup_keywords.robot
 Resource         ../setup/teardown_keywords.robot
-Resource         ../resources/session_resources.robot
+Resource         ../resources/session_keywords.robot
 Resource         ../resources/websocket_keywords.robot
 Resource         ../resources/conversation_keywords.robot
 Resource         ../resources/queue_keywords.robot

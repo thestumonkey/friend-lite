@@ -13,13 +13,13 @@ Documentation    User account management and lifecycle keywords
 ...
 ...              Keywords that should NOT be in this file:
 ...              - Verification/assertion keywords (belong in tests)
-...              - API session management (belong in session_resources.robot)
-...              - Docker service management (belong in setup_resources.robot)
+...              - API session management (belong in session_keywords.robot)
+...              - Docker service management (belong in setup_env_keywords.robot)
 Library          RequestsLibrary
 Library          Collections
 Library          String
 Variables        ../setup/test_env.py
-Resource         session_resources.robot
+Resource         session_keywords.robot
 
 *** Keywords ***
 
@@ -70,23 +70,16 @@ Get Admin User Details With Token
 
 List All Users
     [Documentation]    List all users (admin only)
+    [Arguments]    ${session}
 
-    # Get admin session
-    ${admin_session}=    Get Admin Session
-
-    # Get users
-    ${response}=    GET On Session    ${admin_session}    /api/users    expected_status=200
+    ${response}=    GET On Session    ${session}    /api/users    expected_status=200
     RETURN    ${response.json()}
 
 Update User
     [Documentation]    Update user details
-    [Arguments]    ${user_id}    &{updates}
+    [Arguments]    ${session}    ${user_id}    &{updates}
 
-    # Get admin session
-    ${admin_session}=    Get Admin Session
-
-    # Update user
-    ${response}=    PUT On Session    ${admin_session}    /api/users/${user_id}    json=${updates}    expected_status=200
+    ${response}=    PUT On Session    ${session}    /api/users/${user_id}    json=${updates}    expected_status=200
     RETURN    ${response.json()}
 
 

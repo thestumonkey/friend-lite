@@ -4,7 +4,7 @@ Library          Collections
 Library          OperatingSystem
 Library          ../libs/audio_stream_library.py
 Variables        ../setup/test_env.py
-Resource         session_resources.robot
+Resource         session_keywords.robot
 Resource         queue_keywords.robot
 
 *** Keywords ***

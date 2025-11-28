@@ -5,7 +5,7 @@ Library          Collections
 Library          String
 Resource         ../setup/setup_keywords.robot
 Resource         ../setup/teardown_keywords.robot
-Resource         ../resources/user_resources.robot
+Resource         ../resources/user_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
 Test Setup       Test Cleanup

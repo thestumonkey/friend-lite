@@ -4,7 +4,7 @@ Library          RequestsLibrary
 Library          Collections
 Library          Process
 Library          String
-Resource         session_resources.robot
+Resource         session_keywords.robot
 Resource         audio_keywords.robot
 
 
@@ -139,32 +139,6 @@ Create Test Conversation
 
     RETURN    ${conversation}
 
-Verify Transcript Content
-    [Documentation]    Verify transcript contains expected content and quality
-    [Arguments]    ${conversation}    ${expected_keywords}    ${min_length}=50
-
-    Dictionary Should Contain Key    ${conversation}    transcript
-    ${transcript}=    Set Variable    ${conversation}[transcript]
-    Should Not Be Empty    ${transcript}
-
-    # Check length
-    ${transcript_length}=    Get Length    ${transcript}
-    Should Be True    ${transcript_length} >= ${min_length}    Transcript too short: ${transcript_length}
-
-    # Check for expected keywords
-    ${transcript_lower}=    Convert To Lower Case    ${transcript}
-    FOR    ${keyword}    IN    @{expected_keywords}
-        ${keyword_lower}=    Convert To Lower Case    ${keyword}
-        Should Contain    ${transcript_lower}    ${keyword_lower}    Missing keyword: ${keyword}
-    END
-
-    # Verify segments exist
-    Dictionary Should Contain Key    ${conversation}    segments
-    ${segments}=    Set Variable    ${conversation}[segments]
-    ${segment_count}=    Get Length    ${segments}
-    Should Be True    ${segment_count} > 0    No segments found
-
-    Log    Transcript verification passed: ${transcript_length} chars, ${segment_count} segments    INFO
 
 Find Test Conversation
     [Documentation]    Find the oldest (earliest created) conversation or create one if none exist
@@ -189,63 +163,6 @@ Find Test Conversation
 
     # Wait for initial processing to complete
     Sleep    5s
-
-    RETURN    ${conversation}
-
-Create Fixture Conversation
-    [Documentation]    Create a persistent fixture conversation for reuse across tests
-    ...                This conversation will NOT be deleted between test suites
-    ...                Tags the conversation with is_fixture=true in MongoDB
-    ...                Audio files will be stored in fixtures/ subfolder
-    ...                Returns the conversation ID
-    [Arguments]    ${device_name}=fixture-device
-
-    Log To Console    \nCreating fixture conversation...
-
-    # Upload test audio to fixtures folder
-    ${conversation}=    Upload Audio File    ${TEST_AUDIO_FILE}    ${device_name}    folder=fixtures
-
-    # Verify conversation was created successfully (MongoDB uses conversation_id as the field name)
-    Dictionary Should Contain Key    ${conversation}    conversation_id
-    ${conversation_id}=    Set Variable    ${conversation}[conversation_id]
-
-    # Verify it has transcript content
-    Dictionary Should Contain Key    ${conversation}    transcript
-    ${transcript}=    Set Variable    ${conversation}[transcript]
-    Should Not Be Empty    ${transcript}    Fixture conversation has no transcript
-
-    # Tag this conversation as a fixture in MongoDB so cleanup preserves it
-    ${result}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.conversations.updateOne({'conversation_id': '${conversation_id}'}, {\\$set: {'is_fixture': true}})"    shell=True
-    Should Be Equal As Integers    ${result.rc}    0    Failed to tag conversation as fixture: ${result.stderr}
-
-    # Also tag audio_chunks
-    ${result2}=    Run Process    docker exec advanced-mongo-test-1 mongosh test_db --eval "db.audio_chunks.updateMany({'conversation_id': '${conversation_id}'}, {\\$set: {'is_fixture': true}})"    shell=True
-    Should Be Equal As Integers    ${result2.rc}    0    Failed to tag audio chunks as fixture: ${result2.stderr}
-
-    Log To Console    ✓ Audio files stored in fixtures/ subfolder
-
-    ${transcript_len}=    Get Length    ${transcript}
-    Log To Console    ✓ Fixture conversation created: ${conversation_id}
-    Log To Console    ✓ Transcript length: ${transcript_len} chars
-    Log To Console    ✓ Tagged as fixture (is_fixture=true)
-
-    Set Global Variable    ${FIXTURE_CONVERSATION_ID}    ${conversation_id}
-
-    RETURN    ${conversation_id}
-
-Get Fixture Conversation
-    [Documentation]    Get the persistent fixture conversation
-    ...                Use this in tests that need an existing conversation without creating one
-    ...                Returns the full conversation object
-
-    # Check if fixture was created (uses Get Variable Value to avoid errors if not set)
-    ${fixture_id}=    Get Variable Value    ${FIXTURE_CONVERSATION_ID}    ${EMPTY}
-
-    IF    '${fixture_id}' == '${EMPTY}'
-        Fail    Fixture conversation not created. Call 'Create Fixture Conversation' in suite setup first.
-    END
-
-    ${conversation}=    Get Conversation By ID    ${fixture_id}
 
     RETURN    ${conversation}
 

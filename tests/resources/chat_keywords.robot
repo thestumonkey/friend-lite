@@ -3,7 +3,7 @@ Documentation    Chat Service Keywords
 Library          RequestsLibrary
 Library          Collections
 Variables        ../setup/test_env.py
-Resource         session_resources.robot
+Resource         session_keywords.robot
 
 *** Keywords ***
 
@@ -28,15 +28,12 @@ Get Chat Sessions
     ${response}=    GET On Session    api    /api/chat/sessions    params=${params}
     RETURN    ${response}
 
-
 Delete Chat Session
     [Documentation]    Delete a chat session (uses api session)
     [Arguments]    ${session_id}    ${expected_status}=200
 
     ${response}=    DELETE On Session    api    /api/chat/sessions/${session_id}    expected_status=${expected_status}
     RETURN    ${response}
-
-
 
 Create Test Chat Session
     [Documentation]    Create a test chat session with random title (uses admin session)
@@ -48,12 +45,6 @@ Create Test Chat Session
     Should Be Equal As Integers    ${response.status_code}    200
 
     RETURN    ${response.json()}
-
-Cleanup Test Chat Session
-    [Documentation]    Clean up a test chat session (uses admin session)
-    [Arguments]    ${session_id}
-    ${response}=    Delete Chat Session    ${session_id}
-    Should Be Equal As Integers    ${response.status_code}    200
 
 Get Chat Session
     [Documentation]    Get a specific chat session (uses api session)
@@ -92,4 +83,6 @@ Send Chat Message
     ${response}=        POST On Session    api    /api/chat/sessions/${session_id}/messages    json=${message_data}    expected_status=${expected_status}
 
     RETURN    ${response}
+
+
 

@@ -13,8 +13,8 @@ Documentation    API session creation and authentication management keywords
 ...
 ...              Keywords that should NOT be in this file:
 ...              - Verification/assertion keywords (belong in tests)
-...              - User management operations (belong in user_resources.robot)
-...              - Docker service management (belong in setup_resources.robot)
+...              - User management operations (belong in user_keywords.robot)
+...              - Docker service management (belong in setup_env_keywords.robot)
 Library          RequestsLibrary
 Library          Collections
 Variables        ../setup/test_env.py
@@ -150,3 +150,8 @@ DELETE On Session
     END
 
     RETURN    ${response}
+
+Get Random ID
+    [Documentation]    Generate a unique random ID for test data (call each time for new ID)
+    ${random_id}=    Generate Random String    8    [LETTERS][NUMBERS]
+    RETURN    ${random_id}

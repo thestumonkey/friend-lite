@@ -5,8 +5,8 @@ Library          Collections
 Library          String
 Resource         ../setup/setup_keywords.robot
 Resource         ../setup/teardown_keywords.robot
-Resource         ../resources/session_resources.robot
-Resource         ../resources/user_resources.robot
+Resource         ../resources/session_keywords.robot
+Resource         ../resources/user_keywords.robot
 Resource         ../resources/memory_keywords.robot
 Suite Setup      Suite Setup
 Suite Teardown   Suite Teardown
