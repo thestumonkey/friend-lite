@@ -99,16 +99,42 @@ This document defines the complete user onboarding experience for Mycelia, from 
 │  ┌────────────────────────────────────────────────────┐         │
 │  │  Where should processing happen?                   │         │
 │  │                                                    │         │
-│  │  ◉ Use Mycelia's infrastructure (Recommended)      │         │
-│  │     ✓ No setup required                            │         │
-│  │     ✓ Fast & reliable                              │         │
-│  │     ✓ 1M free tokens/month                         │         │
-│  │     ⚠ Processing happens on our servers            │         │
+│  │  ◉ Quick Start (Mycelia-hosted)                    │         │
 │  │                                                    │         │
-│  │  ○ Self-host your own servers                      │         │
-│  │     ✓ Complete privacy & sovereignty               │         │
-│  │     ✓ No usage limits                              │         │
-│  │     ⚠ Requires GPU or cloud resources              │         │
+│  │     What this means:                               │         │
+│  │     • Get started in < 2 minutes                   │         │
+│  │     • No hardware setup needed                     │         │
+│  │     • Automatic updates & maintenance              │         │
+│  │     • Best for trying Mycelia quickly              │         │
+│  │                                                    │         │
+│  │     What you get:                                  │         │
+│  │     ✓ 1M free tokens/month                         │         │
+│  │     ✓ Fast GPU-accelerated processing              │         │
+│  │     ✓ High-quality Whisper large-v3 model          │         │
+│  │                                                    │         │
+│  │     Privacy trade-offs:                            │         │
+│  │     ⚠ Audio sent to Mycelia servers for processing │         │
+│  │     ⚠ Subject to monthly quota (upgradable)        │         │
+│  │     ℹ️ You can switch to self-hosted anytime       │         │
+│  │                                                    │         │
+│  │  ○ Privacy First (Self-hosted)                     │         │
+│  │                                                    │         │
+│  │     What this means:                               │         │
+│  │     • Complete data sovereignty (nothing leaves your control) │ │
+│  │     • No usage limits or quotas                    │         │
+│  │     • Full control over models & updates           │         │
+│  │     • Can run on local machine or remote GPU server │       │
+│  │                                                    │         │
+│  │     What you need:                                 │         │
+│  │     • GPU recommended (8GB+ VRAM for best performance) │    │
+│  │     • OR CPU fallback (slower, still works)        │         │
+│  │     • ~15GB disk space for models                  │         │
+│  │     • 15-20 minutes setup time                     │         │
+│  │                                                    │         │
+│  │     Setup trade-offs:                              │         │
+│  │     ⚠ Requires technical setup (Docker knowledge)  │         │
+│  │     ⚠ GPU for good performance (CPU is slow)       │         │
+│  │     ⚠ You manage updates & maintenance             │         │
 │  │     [Learn more: Self-hosting Guide]               │         │
 │  │                                                    │         │
 │  │  [Back]  [Continue]                                │         │
@@ -193,25 +219,65 @@ This document defines the complete user onboarding experience for Mycelia, from 
 │                   AI Model Configuration                        │
 │                                                                 │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │  Choose how to handle AI model requests                │     │
+│  │  Which AI models should analyze your transcripts?      │     │
 │  │                                                        │     │
-│  │  ◉ Use Mycelia's default models (Recommended)          │     │
-│  │     We've selected high-quality models for you:        │     │
-│  │     • Small tasks: GPT-4o-mini (fast & cheap)          │     │
-│  │     • Medium tasks: Claude 3.5 Sonnet (balanced)       │     │
+│  │  ◉ Instant Start (Mycelia-provided)                    │     │
+│  │                                                        │     │
+│  │     What this means:                                   │     │
+│  │     • Start using immediately (no API keys needed)     │     │
+│  │     • High-quality models pre-configured               │     │
+│  │     • Optimized for balanced quality & cost            │     │
+│  │     • Zero setup time                                  │     │
+│  │                                                        │     │
+│  │     What you get:                                      │     │
+│  │     • Small tasks: GPT-4o-mini (fast & cost-effective) │     │
+│  │     • Medium tasks: Claude 3.5 Sonnet (balanced quality) │   │
 │  │     • Large tasks: Claude 3.5 Opus (best quality)      │     │
+│  │     • 1M tokens/month free quota                       │     │
 │  │                                                        │     │
-│  │     Using Mycelia's API quota: 1M tokens/month free    │     │
+│  │     Privacy trade-offs:                                │     │
+│  │     ⚠ Uses Mycelia's OpenRouter API key               │     │
+│  │     ⚠ Subject to quota (heavy users may hit limit)     │     │
+│  │     ⚠ Transcripts sent to OpenRouter for processing   │     │
+│  │     ℹ️ Can add your own keys later for unlimited use   │     │
 │  │                                                        │     │
-│  │  ○ Add my own API keys                                 │     │
-│  │     Use your own OpenRouter, OpenAI, or Anthropic keys │     │
-│  │     • No usage limits                                  │     │
-│  │     • Direct billing to your account                   │     │
+│  │  ○ Unlimited Usage (Your API keys)                     │     │
 │  │                                                        │     │
-│  │  ○ Run models locally                                  │     │
-│  │     Use Ollama or other local inference               │     │
-│  │     • Complete privacy                                 │     │
-│  │     • Requires GPU for good performance                │     │
+│  │     What this means:                                   │     │
+│  │     • No usage limits (pay only for what you use)      │     │
+│  │     • Direct relationship with AI provider             │     │
+│  │     • Choose your preferred models                     │     │
+│  │     • Potentially lower cost for heavy usage           │     │
+│  │                                                        │     │
+│  │     What you need:                                     │     │
+│  │     • OpenRouter, OpenAI, or Anthropic account         │     │
+│  │     • API key (5 minutes to create)                    │     │
+│  │     • Credit card for API billing                      │     │
+│  │                                                        │     │
+│  │     Cost trade-offs:                                   │     │
+│  │     ⚠ Requires account setup (~10 minutes)             │     │
+│  │     ⚠ You pay for all API usage (can add up)           │     │
+│  │     ℹ️ Transcripts sent to your chosen provider        │     │
+│  │                                                        │     │
+│  │  ○ Maximum Privacy (Local models)                      │     │
+│  │                                                        │     │
+│  │     What this means:                                   │     │
+│  │     • Complete privacy (data never leaves your machine) │    │
+│  │     • No API costs (free after hardware investment)    │     │
+│  │     • Works offline                                    │     │
+│  │     • Full control over model selection                │     │
+│  │                                                        │     │
+│  │     What you need:                                     │     │
+│  │     • GPU recommended (16GB+ VRAM for best models)     │     │
+│  │     • OR CPU (works but slow, limited model size)      │     │
+│  │     • ~20-50GB disk space for models                   │     │
+│  │     • Ollama installed (via docker-compose.inference.yml) │  │
+│  │                                                        │     │
+│  │     Quality trade-offs:                                │     │
+│  │     ⚠ Lower quality than cloud models (especially on CPU) │  │
+│  │     ⚠ Much slower processing (minutes vs seconds)      │     │
+│  │     ⚠ Requires powerful hardware for good results      │     │
+│  │     ℹ️ Good for experimentation & privacy-first use    │     │
 │  │     [Learn more: Local LLM Guide]                      │     │
 │  │                                                        │     │
 │  │  [Back]  [Continue]                                    │     │
@@ -517,46 +583,87 @@ START
 
 ---
 
+## Decision Framework: How to Choose
+
+### Quick Decision Guide
+
+**"I just want to try Mycelia quickly"**
+- ✅ Inference: Quick Start (Mycelia-hosted)
+- ✅ AI Models: Instant Start (Mycelia-provided)
+- ✅ Skip audio sources for now
+- ⏱️ Time to dashboard: **< 3 minutes**
+
+**"I care deeply about privacy"**
+- ✅ Inference: Privacy First (Self-hosted)
+- ✅ AI Models: Maximum Privacy (Local models)
+- ⚠️ Requires: GPU or powerful CPU
+- ⏱️ Time to dashboard: **20-30 minutes** (including setup)
+
+**"I want best quality, don't mind some cost"**
+- ✅ Inference: Quick Start or Privacy First (with GPU)
+- ✅ AI Models: Unlimited Usage (your API keys, Claude 3.5 Opus)
+- ⏱️ Time to dashboard: **10 minutes**
+
+**"I want to use this long-term with lots of data"**
+- ✅ Inference: Privacy First (remote GPU server)
+- ✅ AI Models: Unlimited Usage (your API keys)
+- ⏱️ Time to dashboard: **30 minutes** (one-time setup)
+
+### Detailed Comparison Tables
+
+#### Inference Server Options
+
+| Factor | Quick Start (Mycelia) | Privacy First (Local) | Privacy First (Remote GPU) |
+|--------|----------------------|----------------------|---------------------------|
+| **Setup Time** | < 2 minutes | 15-20 minutes | 30 minutes (one-time) |
+| **Hardware Needed** | None | GPU or CPU | GPU server (8GB+ VRAM) |
+| **Privacy** | Audio → Mycelia | 100% local | 100% your infrastructure |
+| **Speed** | Fast (GPU) | Slow (CPU) / Fast (GPU) | Fast (dedicated GPU) |
+| **Cost** | Free (quota) | Hardware only | GPU server cost |
+| **Maintenance** | None | You manage | You manage |
+| **Best For** | Quick start, trying out | Privacy-first, solo use | Production, heavy use |
+
+#### AI Model Options
+
+| Factor | Instant Start (Mycelia) | Unlimited Usage (Your Keys) | Maximum Privacy (Local) |
+|--------|------------------------|----------------------------|------------------------|
+| **Setup Time** | 0 minutes | 10 minutes | 20 minutes |
+| **Cost** | Free (1M tokens/month) | Pay per use (~$0.10-5/1M tokens) | Free (after hardware) |
+| **Quality** | Excellent (GPT-4o, Claude) | Excellent (your choice) | Good (limited by hardware) |
+| **Speed** | Fast (seconds) | Fast (seconds) | Slow (minutes) |
+| **Privacy** | Data → OpenRouter | Data → your provider | 100% local |
+| **Quota** | 1M tokens/month | Unlimited (pay as you go) | Unlimited |
+| **Best For** | Quick trials, casual use | Heavy users, businesses | Privacy-first, offline |
+
+#### Combined Recommendations by Use Case
+
+| Use Case | Inference | AI Model | Why? |
+|----------|-----------|----------|------|
+| **First-time user** | Quick Start | Instant Start | Fastest path to value (< 3 min) |
+| **Privacy advocate** | Privacy First (Local) | Maximum Privacy | Zero external data transfer |
+| **Power user** | Privacy First (GPU) | Unlimited Usage | Best quality + control + unlimited |
+| **Business/Enterprise** | Privacy First (Remote) | Unlimited Usage | Compliance + scalability |
+| **Experimenter** | Quick Start | Instant Start → upgrade later | Start fast, optimize later |
+| **Budget-conscious** | Privacy First (CPU) | Maximum Privacy | No ongoing costs |
+
+---
+
 ## Key Decision Points Explained
 
 ### 1. Inference Server Choice
 
-**Why this matters**: Determines where audio processing (STT, diarization) happens.
-
-**Options**:
-- **Mycelia Managed** (Default):
-  - Pros: Zero setup, fast, reliable
-  - Cons: Requires trust in Mycelia's servers, subject to quota
-  - Best for: Most users, quick start
-- **Self-Hosted**:
-  - Pros: Complete privacy, no limits
-  - Cons: Requires GPU or cloud resources, setup complexity
-  - Best for: Privacy-conscious users, enterprise, heavy usage
+**Why this matters**: Determines where audio processing (STT, diarization) happens and impacts privacy, cost, and setup time.
 
 **Technical implications**:
-- Managed: Backend calls Mycelia's API endpoints
-- Self-hosted: Backend calls user's local/cloud servers
+- Managed: Backend calls Mycelia's API endpoints (transcripts stored locally)
+- Self-hosted: Backend calls user's local/cloud servers (everything local)
 - Configuration stored in `configs` collection
 
 ---
 
 ### 2. AI Model Configuration
 
-**Why this matters**: Determines which LLM analyzes transcripts and creates summaries.
-
-**Options**:
-- **Use Defaults** (Recommended):
-  - Pros: Works immediately, high quality, 1M tokens free
-  - Cons: Uses Mycelia's API quota, subject to limits
-  - Best for: Most users, trying the system
-- **Add Own API Keys**:
-  - Pros: No usage limits, direct billing, full control
-  - Cons: Costs money, requires account setup
-  - Best for: Heavy users, organizations
-- **Run Locally**:
-  - Pros: Complete privacy, no API costs, offline capable
-  - Cons: Requires GPU, slower, lower quality (depending on model)
-  - Best for: Privacy-first users, offline use, experimentation
+**Why this matters**: Determines which LLM analyzes transcripts and creates summaries. Impacts quality, cost, and privacy.
 
 **Technical implications**:
 - Default: Uses pre-configured OpenRouter with Mycelia's key
