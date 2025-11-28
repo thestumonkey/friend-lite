@@ -12,6 +12,36 @@ from lib.worker import setup_worker_logging, get_worker_id, mongo_cursor, claim_
 
 logger = setup_worker_logging('diarization_worker')
 
+
+def log_info(message: str):
+    """Write to both tqdm console and rotating log."""
+    tqdm.write(message)
+    logger.info(message)
+
+
+def _int_env(name: str, default: int, minimum: Optional[int] = None) -> int:
+    """
+    Read an integer from the environment with validation.
+    """
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value == '':
+        result = default
+    else:
+        try:
+            result = int(raw_value)
+        except ValueError:
+            log_info(f'{name} environment value "{raw_value}" is invalid; using default {default}')
+            result = default
+
+    if minimum is not None and result < minimum:
+        log_info(f'{name}={result} is below minimum {minimum}; using {minimum}')
+        result = minimum
+    return result
+
+
+DEFAULT_MAX_SEQUENCE_LENGTH = _int_env('DIARIZATION_MAX_SEQUENCE_LENGTH', 20, minimum=1)
+MAX_WAV_UPLOAD_BYTES = _int_env('DIARIZATION_MAX_WAV_BYTES', 20 * 1024 * 1024, minimum=1024)
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
@@ -164,7 +194,7 @@ def get_diarization_sequences(limit=10, filters=None, max_sequence_length=30, wo
                     chunks=[]
                 )
             except Exception as e:
-                tqdm.write(f"ERROR: Creating diarization sequence for {original_id}: {e}")
+                log_info(f"ERROR: Creating diarization sequence for {original_id}: {e}")
                 continue
 
         seq.chunks.append(chunk)
@@ -249,7 +279,7 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
 
     try:
         if not claim_sequence(sequence, worker_id):
-            tqdm.write(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  skipped (claimed)')
+            log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  skipped (claimed)')
             return {"status": "skipped", "chunks": 0, "chunks_diarized": 0, "duration": 0, "segments": 0}
 
         # Combine chunks into WAV file
@@ -274,7 +304,7 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
             duration = end_time - start_time
             chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
             chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
-            tqdm.write(
+            log_info(
                 f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
                 f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  no_segments'
             )
@@ -325,7 +355,7 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
         duration = end_time - start_time
         chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
         chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
-        tqdm.write(
+        log_info(
             f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
             f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  diarized  {saved_segments} segments'
         )
@@ -340,8 +370,8 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
     except requests.exceptions.ReadTimeout:
         end_time = time.time()
         release_sequence(sequence, worker_id)
-        tqdm.write(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  ERROR: ReadTimeout')
-        tqdm.write(f'  → Increase timeout or check diarization server at {DIARIZATION_SERVER_URL}')
+        log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  ERROR: ReadTimeout')
+        log_info(f'  → Increase timeout or check diarization server at {DIARIZATION_SERVER_URL}')
         return {
             "status": "error",
             "chunks": 0,
@@ -353,7 +383,7 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
     except Exception as e:
         end_time = time.time()
         release_sequence(sequence, worker_id)
-        tqdm.write(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  ERROR: {str(e)}')
+        log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  ERROR: {str(e)}')
         return {
             "status": "error",
             "chunks": 0,
@@ -389,9 +419,9 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     if worker_id is None:
         worker_id = get_worker_id()
 
-    tqdm.write(f'Worker ID: {worker_id}')
-    tqdm.write(f'Using {max_workers} parallel worker(s)')
-    tqdm.write(f'Diarization server: {DIARIZATION_SERVER_URL}')
+    log_info(f'Worker ID: {worker_id}')
+    log_info(f'Using {max_workers} parallel worker(s)')
+    log_info(f'Diarization server: {DIARIZATION_SERVER_URL}')
 
     pending_sequences_total: Optional[int] = None
     pending_chunks_total: Optional[int] = None
@@ -399,12 +429,12 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
     try:
         pending_sequences_total = count_pending_sequences()
     except Exception as exc:
-        tqdm.write(f'Pending sequence count unavailable: {exc}')
+        log_info(f'Pending sequence count unavailable: {exc}')
 
     try:
         pending_chunks_total = count_pending_chunks()
     except Exception as exc:
-        tqdm.write(f'Pending chunk count unavailable: {exc}')
+        log_info(f'Pending chunk count unavailable: {exc}')
 
     pending_parts = []
     if pending_sequences_total is not None:
@@ -413,11 +443,12 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
         pending_parts.append(f'chunks={pending_chunks_total}')
 
     if pending_parts:
-        tqdm.write('Pending work: ' + ', '.join(pending_parts))
+        log_info('Pending work: ' + ', '.join(pending_parts))
     else:
-        tqdm.write('Pending work: unknown (unable to query MongoDB)')
+        log_info('Pending work: unknown (unable to query MongoDB)')
 
-    tqdm.write('Initial metrics: processed_chunks=0, chunk_rate=0.00 ch/s, eta=n/a')
+    log_info('Initial metrics: processed_chunks=0, chunk_rate=0.00 ch/s, eta=n/a')
+    log_info('Progress legend: count [elapsed, avg/seq, chunks=completed chunks, ch_sec=current chunks/sec, eta=time remaining, errors=total errors]')
 
     processed_count = 0
     stats = {'diarized': 0, 'no_segments': 0, 'error': 0, 'skipped': 0}
@@ -455,15 +486,11 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
             eta_seconds = (remaining_chunks / chunks_per_sec) if chunks_per_sec and remaining_chunks is not None and chunks_per_sec > 0 else None
 
             pbar.set_postfix(
-                diarized=stats['diarized'],
-                no_segments=stats['no_segments'],
-                errors=stats['error'],
-                skipped=stats['skipped'],
                 seqs=processed_count,
-                done=completed_chunks,
-                chunks_per_sec=f"{chunks_per_sec:.2f}" if chunks_per_sec else 'n/a',
+                chunks=completed_chunks,
+                ch_sec=f"{chunks_per_sec:.2f}" if chunks_per_sec else 'n/a',
                 eta=_format_eta(eta_seconds),
-                segments=total_segments
+                errors=stats['error']
             )
 
             return counted
@@ -476,7 +503,9 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
             while True:
                 sequences = list(get_diarization_sequences(limit=batch_size, worker_id=worker_id))
                 if not sequences:
-                    tqdm.write("\nNo more sequences to process")
+                    log_info("\nNo more sequences to process")
+                if not sequences:
+                    log_info("\nNo more sequences to process")
                     break
 
                 if executor:
@@ -501,10 +530,10 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None):
             if executor:
                 executor.shutdown(wait=True)
 
-    tqdm.write("\n" + "=" * 80)
-    tqdm.write(f"Completed: {processed_count} sequences, {completed_chunks} chunks, {total_segments} segments")
-    tqdm.write(f"Stats: diarized={stats['diarized']}, no_segments={stats['no_segments']}, errors={stats['error']}, skipped={stats['skipped']}")
-    tqdm.write("=" * 80)
+    log_info("\n" + "=" * 80)
+    log_info(f"Completed: {processed_count} sequences, {completed_chunks} chunks, {total_segments} segments")
+    log_info(f"Stats: diarized={stats['diarized']}, no_segments={stats['no_segments']}, errors={stats['error']}, skipped={stats['skipped']}")
+    log_info("=" * 80)
 
 
 if __name__ == '__main__':
