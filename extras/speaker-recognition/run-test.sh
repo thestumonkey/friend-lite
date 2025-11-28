@@ -55,17 +55,15 @@ fi
 
 print_info "Speaker Recognition Integration Test Runner"
 print_info "=========================================="
-print_info "HF_TOKEN length: ${#HF_TOKEN}"
-print_info "DEEPGRAM_API_KEY length: ${#DEEPGRAM_API_KEY}"
 print_info ".env file exists: $([ -f .env ] && echo 'yes' || echo 'no')"
 
 # Load environment variables (CI or local)
-if [ -f ".env" ] && [ -z "$HF_TOKEN" ]; then
+if [ -f ".env" ] && [ -z "${HF_TOKEN:-}" ]; then
     print_info "Loading environment variables from .env..."
     set -a
     source .env
     set +a
-elif [ -n "$HF_TOKEN" ]; then
+elif [ -n "${HF_TOKEN:-}" ]; then
     print_info "Using environment variables from CI..."
     # Set up CI-specific environment variables that would normally be in .env
     export SIMILARITY_THRESHOLD=0.15
