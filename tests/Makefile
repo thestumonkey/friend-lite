@@ -1,23 +1,20 @@
 # Friend-Lite Test Makefile
-# Shortcuts for running tests by speed category
+# Shortcuts for running tests
 
-.PHONY: help fast mid all tag-tests analyze clean
+.PHONY: help all clean
 
 # Default output directory
 OUTPUTDIR ?= results
-TEST_DIR = endpoints integration
+TEST_DIR = endpoints integration infrastructure
 
 help:
 	@echo "Friend-Lite Test Targets:"
 	@echo ""
 	@echo "Running Tests:"
-	@echo "  make fast        - Run only fast tests (< 2s each)"
-	@echo "  make mid         - Run fast + mid tests (< 10s each)"
-	@echo "  make all         - Run all tests (including long tests)"
-	@echo ""
-	@echo "Test Management:"
-	@echo "  make tag-tests   - Tag tests by speed based on last run"
-	@echo "  make analyze     - Analyze test speeds from last run"
+	@echo "  make all         - Run all tests"
+	@echo "  make endpoints   - Run only endpoint tests"
+	@echo "  make integration - Run only integration tests"
+	@echo "  make infra       - Run only infrastructure tests"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean       - Remove test output files"
@@ -26,27 +23,11 @@ help:
 	@echo "  OUTPUTDIR        - Output directory (default: results)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make fast                    # Quick test run"
-	@echo "  make mid OUTPUTDIR=/tmp/out  # Custom output dir"
 	@echo "  make all                     # Full test suite"
+	@echo "  make endpoints               # Only endpoint tests"
+	@echo "  make all OUTPUTDIR=/tmp/out  # Custom output dir"
 
-# Run only fast tests (< 2 seconds)
-fast:
-	@echo "Running fast tests (< 2s)..."
-	robot --outputdir $(OUTPUTDIR) \
-		--include speed-fast \
-		--name "Fast Tests" \
-		$(TEST_DIR)
-
-# Run fast and mid tests (< 10 seconds)
-mid:
-	@echo "Running fast + mid tests (< 10s)..."
-	robot --outputdir $(OUTPUTDIR) \
-		--include speed-fastORspeed-mid \
-		--name "Fast and Mid Tests" \
-		$(TEST_DIR)
-
-# Run all tests (including long tests)
+# Run all tests
 # Creates a persistent fixture conversation that won't be deleted between suites
 all:
 	@echo "Running all tests..."
@@ -54,27 +35,26 @@ all:
 		--name "All Tests" \
 		$(TEST_DIR)
 
-# Tag tests based on execution speed from last run
-tag-tests:
-	@echo "Tagging tests based on speed..."
-	@if [ ! -f "$(OUTPUTDIR)/output.xml" ]; then \
-		echo "Error: $(OUTPUTDIR)/output.xml not found!"; \
-		echo "Run tests first to generate timing data."; \
-		exit 1; \
-	fi
-	python3 scripts/tag_tests_by_speed.py $(OUTPUTDIR)/output.xml
-	@echo ""
-	@echo "Tests have been tagged! Run 'make analyze' to see the breakdown."
+# Run only endpoint tests
+endpoints:
+	@echo "Running endpoint tests..."
+	robot --outputdir $(OUTPUTDIR) \
+		--name "Endpoint Tests" \
+		endpoints
 
-# Analyze test speeds from last run
-analyze:
-	@echo "Analyzing test speeds..."
-	@if [ ! -f "$(OUTPUTDIR)/output.xml" ]; then \
-		echo "Error: $(OUTPUTDIR)/output.xml not found!"; \
-		echo "Run tests first to generate timing data."; \
-		exit 1; \
-	fi
-	python3 scripts/analyze_test_speeds.py $(OUTPUTDIR)/output.xml
+# Run only integration tests
+integration:
+	@echo "Running integration tests..."
+	CREATE_FIXTURE=true robot --outputdir $(OUTPUTDIR) \
+		--name "Integration Tests" \
+		integration
+
+# Run only infrastructure tests
+infra:
+	@echo "Running infrastructure tests..."
+	robot --outputdir $(OUTPUTDIR) \
+		--name "Infrastructure Tests" \
+		infrastructure
 
 # Clean up test output files
 clean:
