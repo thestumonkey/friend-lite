@@ -10,6 +10,7 @@ import { DateTimePicker } from "@/components/ui/datetime-picker";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAudioPlayer } from "@/modules/audio/player";
 import { embeddingToColor } from "@/lib/pcaColor";
+import { ObjectId } from "bson";
 
 interface TranscriptSegment {
   start: number; // seconds from transcript start
@@ -21,10 +22,12 @@ interface TranscriptionDoc {
   _id: unknown;
   start: Date;
   end: Date;
+  original_id: ObjectId;
   segments: TranscriptSegment[];
 }
 
 interface RenderSegment {
+  original_id: ObjectId;
   time: Date;
   endTime: Date;
   text: string;
@@ -35,7 +38,7 @@ interface DiarizationDoc {
   _id: unknown;
   start: Date;
   end: Date;
-  speaker?: string;
+  original: ObjectId;
   embedding?: number[];
 }
 
@@ -175,6 +178,7 @@ const TranscriptPage = () => {
             endTime: absEnd,
             text: (s.text || "").replace(/\n/g, " "),
             transcriptStart: doc.start,
+            original_id: doc.original_id,
           });
         }
       }
@@ -285,6 +289,7 @@ const TranscriptPage = () => {
               endTime: absEnd,
               text: t,
               transcriptStart: doc.start,
+              original_id: doc.original_id,
             });
           }
         }
@@ -539,8 +544,9 @@ const TranscriptPage = () => {
                   const diarizationsInSegment = !lastSearchedQ
                     ? diarizations.filter(
                         (d) =>
+                          d.original === seg.original_id &&
                           d.start.getTime() < seg.endTime.getTime() &&
-                          d.end.getTime() > seg.time.getTime(),
+                        d.end.getTime() > seg.time.getTime(),
                       )
                     : [];
 
@@ -565,9 +571,6 @@ const TranscriptPage = () => {
                                     <div className="text-xs">
                                       <div>Start: {formatTime(diarization.start, timeFormat)}</div>
                                       <div>End: {formatTime(diarization.end, timeFormat)}</div>
-                                      {diarization.speaker && (
-                                        <div>Speaker: {diarization.speaker}</div>
-                                      )}
                                     </div>
                                   </div>
                                 </TooltipContent>
@@ -591,8 +594,9 @@ const TranscriptPage = () => {
                                 <path d="M3 2v12l10-6L3 2z" />
                               </svg>
                             </button>
-                            <div className="text-xs text-muted-foreground">
-                              {formatTime(seg.time, timeFormat)}
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <span>{formatTime(seg.time, timeFormat)}</span>
+                                <span>{formatTimeRangeDuration(seg.time, seg.endTime)}</span>
                             </div>
                           </div>
                           <div className="whitespace-pre-wrap leading-relaxed">

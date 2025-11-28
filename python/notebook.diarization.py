@@ -302,7 +302,7 @@ def display_by_id(diarization_id: str):
     w = Audio(file)
     display(w)
 
-display_by_id('67fed8f5573b7e8abb1c2238')
+display_by_id('67fed55d7ce486f7496d2d81')
 # %%
 
 
@@ -440,3 +440,40 @@ def apply_pca_color_transform(new_embeddings, pca_params):
 
 # %%
 
+import torch
+
+from speechbrain.inference.speaker import SpeakerRecognition
+
+class SpeakerToEmbedding(SpeakerRecognition):
+    def get_embedding(self, *files: str) -> np.ndarray:
+        waveforms = [self.load_audio(file) for file in files]
+        batch = torch.stack(waveforms)
+        return self.encode_batch(batch).detach().numpy()
+
+model = SpeakerToEmbedding.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb", savedir="pretrained_models/spkrec-ecapa-voxceleb")
+
+
+t1 = '67fed949573b7e8abb1c228f.local.wav' # noisy 
+# t1 = '67fed6c7573b7e8abb1c2116.local.wav'
+t2 = '67fed75a573b7e8abb1c213c.local.wav'
+
+embeddings = model.get_embedding(t1, t2)
+embeddings.shape
+
+# %%
+embeddings[0]
+# %%
+
+
+from speechbrain.inference.separation import SepformerSeparation as separator
+import torchaudio
+
+model = separator.from_hparams(source="speechbrain/sepformer-whamr-enhancement", savedir='pretrained_models/sepformer-whamr-enhancement4')
+enhanced_speech = model.separate_file(path='67fed949573b7e8abb1c228f.local.wav')
+# %%
+enhanced_speech
+Audio(enhanced_speech[:, :].detach().cpu().squeeze(), rate=8000)
+# %%
+Audio(filename='67fed949573b7e8abb1c228f.local.wav')
+
+# %%
