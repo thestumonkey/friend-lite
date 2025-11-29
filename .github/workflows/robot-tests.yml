@@ -190,8 +190,11 @@ jobs:
         OPENAI_MODEL: gpt-4o-mini
         DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
       run: |
-        # Run all tests
-        make all OUTPUTDIR=results || true
+        # Run all tests (don't fail workflow to allow artifact upload)
+        make all OUTPUTDIR=results
+        TEST_EXIT_CODE=$?
+        echo "test_exit_code=$TEST_EXIT_CODE" >> $GITHUB_ENV
+        exit 0  # Don't fail here, we'll fail at the end after uploading artifacts
 
     - name: Show service logs
       if: always()
@@ -363,3 +366,13 @@ jobs:
       working-directory: backends/advanced
       run: |
         docker compose -f docker-compose-test.yml down -v
+
+    - name: Fail workflow if tests failed
+      if: always()
+      run: |
+        if [ "${{ env.test_exit_code }}" != "0" ]; then
+          echo "❌ Tests failed with exit code ${{ env.test_exit_code }}"
+          exit 1
+        else
+          echo "✅ All tests passed"
+        fi
