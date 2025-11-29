@@ -78,8 +78,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/your-org/mycelia.git
 cd mycelia
 
-# Start the services (MongoDB, Redis)
-docker compose up -d
+# Option A: Bring up databases + frontend in one go
+docker compose up -d --build redis mongo mongo-search frontend
+
+# Option B: Start stateful services only (run apps locally)
+docker compose up -d redis mongo mongo-search
 
 # Configure backend environment
 cd backend
@@ -96,16 +99,14 @@ deno run -A --env server.ts token-create
 deno task dev
 ```
 
-The backend will be available at http://localhost:5173/
+The backend dev server will be available at http://localhost:5173/.
 
 ### 3. Frontend
 
 #### Option A: Run via Docker Compose (production build)
 
 ```bash
-# From repo root
-docker compose build frontend
-docker compose up -d frontend
+docker compose up -d --build frontend
 ```
 
 Open http://localhost:8080.
@@ -118,6 +119,27 @@ deno task dev
 ```
 
 Open http://localhost:3001. Configure backend URL and credentials in the settings page.
+
+### 4. Inference & Diarization Stack (optional)
+
+#### Whisper STT server
+```bash
+cd python/whisper_server
+uv sync
+uv run server.py  # serves on http://localhost:8081 by default
+```
+Point `STT_SERVER_URL` to the host running this process (local or remote).
+
+#### Speaker recognition / diarization service
+Use the dedicated compose file under `diarizator/`:
+```bash
+cd diarizator
+# CPU build
+docker compose --profile cpu up -d speaker-service web-ui
+# GPU build (requires NVIDIA runtime)
+docker compose --profile gpu up -d speaker-service-gpu web-ui nginx
+```
+The web UI lives at `http://localhost:5173` (per `REACT_UI_PORT`) and the API exposes port `8085`. Configure `SPEAKER_SERVICE_URL` in your backend or processors to consume the service.
 
 ## LLM Setup
 
@@ -209,7 +231,7 @@ uv run daemon.py
 
 Quick start:
 
-1. Start a Whisper server (local or remote) as documented in `backend/README.md#speech-to-text-stt`.
+1. Start a Whisper server (local or remote) as documented in [backend/README.md#speech-to-text-stt](backend/README.md#speech-to-text-stt).
 2. Transcribe queued audio:
    ```bash
    cd python
