@@ -10,43 +10,34 @@ your own words.
 
 ## Roadmap
 
-**Ready to use**
+**Ready now**
 
-😐 Ingestion pipeline for audio files
-
-😐 Audio chunking
-
-😐 Speech Detection + Transcription
-
-😐 Timeline UI for playback & search
-
-😐 Transcript-synced playback
-
-😐 Modular system (add your own!)
-
-😐 MCP (Model Context Protocol)
-
-😐 OAuth2
-
-😐 Summarizations
-
-😐 Full Text Search
-
-😐 Observability
+- ✅ Audio ingestion daemon & discovery watchers continuously pull Apple Voice Memos, Google Drive, and local libraries into the system (`python/daemon.py`, `python/discovery.py`, `python/settings.py`).
+- ✅ Smart chunking, diarization-friendly VAD, and waveform normalization keep segments aligned for downstream processing (`python/chunking.py`, `python/processors/vad.py`, `python/diarization.py`).
+- ✅ Speech detection + Whisper transcription with local or remote servers powered by `python/stt.py` and `python/whisper_server/`.
+- ✅ Timeline UI with transcript-synced playback, jump controls, and search overlays (`frontend/src/modules/audio`, `frontend/src/pages/TranscriptPage.tsx`, `frontend/src/components/ObjectForm.tsx`).
+- ✅ Modular resource-based backend so you can plug in new processors, storage, or prompts (`backend/app/lib/resources`, `backend/app/modules`, `backend/app/routes/api.resource.$name.ts`).
+- ✅ MCP + CLI automation for remote operations and scripting (`backend/app/routes/mcp.ts`, `backend/cli.ts`, `docs/README.md#remote-operations`).
+- ✅ OAuth2 + token issuance with `.well-known` metadata and JWT login flows (`backend/app/routes/oauth.*`, `backend/app/routes/auth.jwt.login.ts`).
+- ✅ LLM summarizations & conversation extraction across `python/convos/` and `backend/app/routes/llm.chat.completions.ts`.
+- ✅ MongoDB full-text search and GridFS-backed storage via the dedicated `mongo-search`/`mongot` services in `docker-compose.yml` and `backend/app/lib/mongo`.
+- ✅ Structured logging & observability for ingestion/STT/LLM jobs (daemon progress output, `python/logs/`, guidance for `~/Library/mycelia/logs/daemon.log`).
 
 **In Progress**
 
-🫥 Chat with your memory
+- 🚧 Chat with your memory via the Friend-Lite companion app + advanced backend (`friend/`) that is wiring semantic memories and wearable capture back into Mycelia.
+- 🚧 Streaming ingestion & GPU diarization stack replacing the current batch-only flow (`python/diarization_worker.py`, `diarizator/` Helm charts + WebUI).
+- 🚧 Multi-device & multi-modal capture (health, geolocation, photos, sensors) prototyped across `friend/extras/` and `friend/Docs/features.md`.
+- 🚧 Semantic search + vector memory integration that connects the Qdrant-backed pipelines in `friend/backends/advanced/` and the OpenMemory MCP bridges into the main timeline.
 
-🫥 Streaming ingestion (replace batch system)
+**Planned / Up Next**
 
-🫥 Other modalities (health, geolocation, photos, etc.)
-
-🫥 Sharing
-
-🫥 Semantic Search
-
-🫥 Backup Management
+- 🧭 Unified dockerized stack with auto-initialization scripts so `docker compose up` brings up backend, frontend, and Python services (Phase 0 in `docs/DX_ROADMAP.md` & `docs/TASK_BREAKDOWN.md`).
+- 🧭 Guided setup wizard (CLI + web), invite flow, and sample data path outlined in `docs/ONBOARDING_FLOW.md` (Phase 1).
+- 🧭 Managed vs self-hosted inference configuration, remote GPU support, and connection testing UI (Phase 2 in `docs/DX_ROADMAP.md`/`docs/TASK_BREAKDOWN.md`).
+- 🧭 LLM provider + model management, aliasing, quotas, and a model selection wiki (Phase 3 plus `docs/PROCESSING_AND_ARTIFACTS.md` + `docs/DX_ROADMAP.md`).
+- 🧭 Privacy + usage dashboards, token metering, and formal privacy policy with export/acceptance flows (Phase 4 roadmap).
+- 🧭 Processing/artifact templates, batch operations, sharing, and backup/export automation (Phases 5–6; see `docs/PROCESSING_AND_ARTIFACTS.md`).
 
 
 ## 🚀 Quick Start
