@@ -73,24 +73,21 @@ async function ensureIndexExists(
   await ensureCollectionExists(db, collectionName);
 
   const collection = db.collection(collectionName);
-  const indexes = await collection.listIndexes().toArray();
   const indexName = options.name;
 
-  const indexExists = indexes.some((index) => {
-    if (indexName) {
-      return index.name === indexName;
-    }
-    // Compare index keys
-    return JSON.stringify(index.key) === JSON.stringify(indexSpec);
-  });
-
-  if (!indexExists) {
+  try {
     await collection.createIndex(indexSpec, options);
     console.log(
       `Created index on ${collectionName}: ${
         indexName || JSON.stringify(indexSpec)
       }`,
     );
+  } catch (error) {
+    // Silently ignore if index already exists (possibly with different name)
+    if (error instanceof Error && error.message.includes("Index already exists")) {
+      return;
+    }
+    throw error;
   }
 }
 
