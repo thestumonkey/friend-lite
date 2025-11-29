@@ -566,12 +566,26 @@ const TranscriptPage = () => {
                                   />
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <div className="space-y-1">
+                                  <div className="space-y-2">
                                     <div className="font-semibold">Diarization</div>
                                     <div className="text-xs">
                                       <div>Start: {formatTime(diarization.start, timeFormat)}</div>
                                       <div>End: {formatTime(diarization.end, timeFormat)}</div>
                                     </div>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const diarizationId = diarization._id instanceof ObjectId
+                                          ? diarization._id.toString()
+                                          : String(diarization._id);
+                                        navigate(`/diarizations/${diarizationId}`);
+                                      }}
+                                      className="w-full mt-2"
+                                    >
+                                      Go to diarization
+                                    </Button>
                                   </div>
                                 </TooltipContent>
                               </Tooltip>
