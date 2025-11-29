@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": "./src",
+      "@interfaces/": "../interfaces/",
     },
   },
   build: {

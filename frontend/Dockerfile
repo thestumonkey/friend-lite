@@ -7,14 +7,14 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # Copy lockfiles and config first for better caching
-COPY deno.json deno.lock package.json package-lock.json ./
+COPY ./frontend/deno.json ./frontend/deno.lock ./frontend/package.json ./frontend/package-lock.json ./
 
 # Pre-resolve npm packages Vite needs into node_modules via Deno
 RUN deno cache --node-modules-dir --lock=deno.lock --reload npm:vite
 
 # Copy the rest of the source
-COPY . .
-
+COPY ./frontend .
+COPY ./interfaces ../interfaces
 # Build static assets using Deno task (runs: deno run -A npm:vite build)
 RUN deno task build
 
@@ -27,7 +27,7 @@ RUN adduser -D -H -u 10001 appuser \
   && chown -R appuser:appuser /var/cache/nginx /var/run /var/log/nginx
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY ./nginx.conf /etc/nginx/nginx.conf
+COPY ./frontend/nginx.conf /etc/nginx/nginx.conf
 
 USER appuser
 EXPOSE 8080
