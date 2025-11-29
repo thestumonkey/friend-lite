@@ -161,6 +161,26 @@ jobs:
 
         echo "✓ All services ready!"
 
+    - name: Verify checked out code
+      working-directory: tests
+      run: |
+        echo "Current git commit:"
+        git log -1 --oneline
+        echo ""
+        echo "Test files in current checkout:"
+        find . -name "*.robot" -type f | head -10
+        echo ""
+        echo "Sample of tags in test files:"
+        grep -h "\[Tags\]" endpoints/*.robot infrastructure/*.robot integration/*.robot 2>/dev/null | head -20 || echo "No tag files found"
+
+    - name: Clean previous test results
+      working-directory: tests
+      run: |
+        echo "Cleaning any previous test results..."
+        rm -rf results
+        mkdir -p results
+        echo "✓ Fresh results directory created"
+
     - name: Run Robot Framework tests
       working-directory: tests
       env:
