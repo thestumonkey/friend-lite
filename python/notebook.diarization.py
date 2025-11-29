@@ -85,6 +85,12 @@ KNOWN_SPEAKERS = {
             '67fed91e573b7e8abb1c226d',
         },
     },
+    'dasha_d': {
+        'color': 'blue',
+        'known_diarizations': {
+            '6928cc072f0a9afef97b3f65',
+        },
+    },
     'random_person_1': {
         'color': 'purple',
         'known_diarizations': {

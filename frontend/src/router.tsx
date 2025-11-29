@@ -23,6 +23,7 @@ import ObjectHistoryPage from "./pages/ObjectHistoryPage";
 import CreateObjectPage from "./pages/CreateObjectPage";
 import CreateAudioRecordPage from "./pages/CreateAudioRecordPage";
 import AudioPlayerPage from "./pages/AudioPlayerPage";
+import AudioExportPage from "./pages/AudioExportPage";
 import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 export const router = createBrowserRouter([
@@ -57,6 +58,10 @@ export const router = createBrowserRouter([
       {
         path: "audio/record",
         element: <CreateAudioRecordPage />,
+      },
+      {
+        path: "audio/export",
+        element: <AudioExportPage />,
       },
       {
         path: "events/new",

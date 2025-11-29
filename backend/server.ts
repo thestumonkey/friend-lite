@@ -77,13 +77,11 @@ function cleanupLogging() {
   }
 }
 
-async function setup() {
+async function startServer(host: string, port: number, skipChecks = false) {
   await setupResources();
-  await ensureAllCollectionsExist();
-}
-
-async function startServer(host: string, port: number) {
-  await setupResources();
+  if (!skipChecks) {
+    await ensureAllCollectionsExist();
+  }
 
   const app = express();
   const httpServer = createHttpServer(app);
@@ -166,14 +164,20 @@ async function configureCli() {
             type: "string",
             describe: "Host to serve on.",
             default: "0.0.0.0",
+          })
+          .option("skip-checks", {
+            type: "boolean",
+            describe: "Skip MongoDB collection and index checks.",
+            default: false,
           }),
       async (
-        args: ArgumentsCamelCase<{ host: string; port: number }>,
+        args: ArgumentsCamelCase<{ host: string; port: number; skipChecks?: boolean }>,
       ) => {
         try {
           const host = String(args.host);
           const port = Number(args.port);
-          await startServer(host, port);
+          const skipChecks = Boolean(args.skipChecks);
+          await startServer(host, port, skipChecks);
           await new Promise((resolve) => {
             process.on("SIGINT", resolve);
             process.on("SIGTERM", resolve);
@@ -265,7 +269,6 @@ async function configureCli() {
 
 async function main() {
   setupLogging();
-  await setup();
   await configureCli();
   cleanupLogging();
   exit(0);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { callResource, apiClient } from "@/lib/api";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -8,6 +8,7 @@ import { embeddingToColor } from "@/lib/pcaColor";
 import { ObjectId } from "bson";
 import { Play, Pause, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import * as d3 from "d3";
 
 interface DiarizationDoc {
   _id: unknown;
@@ -21,6 +22,122 @@ interface DiarizationDoc {
   duration?: number;
   created_at?: Date;
 }
+
+interface EmbeddingHeatmapProps {
+  embedding: number[];
+  color: string;
+}
+
+const EmbeddingHeatmap = ({ embedding, color }: EmbeddingHeatmapProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 600, height: 300 });
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const resizeObserver = new ResizeObserver(([{ contentRect }]) => {
+      setDimensions({
+        width: Math.max(contentRect.width, 400),
+        height: 300,
+      });
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  const { cells, colorScale, cellSize, cols, rows, absMax, heatmapHeight, heatmapCenterX } = useMemo(() => {
+    const length = embedding.length;
+    const cols = Math.round(Math.sqrt(length));
+    const rows = Math.ceil(length / cols);
+    
+    const padding = 2;
+    const availableWidth = dimensions.width - 40;
+    const availableHeight = dimensions.height - 80;
+    const cellWidth = Math.floor((availableWidth - (cols - 1) * padding) / cols);
+    const cellHeight = Math.floor((availableHeight - (rows - 1) * padding) / rows);
+    const cellSize = Math.min(cellWidth, cellHeight, 12);
+
+    const min = Math.min(...embedding);
+    const max = Math.max(...embedding);
+    const absMax = Math.max(Math.abs(min), Math.abs(max));
+    
+    const colorScale = d3.scaleSequential(d3.interpolateRdYlBu)
+      .domain([absMax, -absMax]);
+
+    const heatmapStartX = 20;
+    const heatmapWidth = cols * (cellSize + padding) - padding;
+    const heatmapCenterX = heatmapStartX + heatmapWidth / 2;
+
+    const cells = embedding.map((value, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      return {
+        index,
+        value,
+        x: heatmapStartX + col * (cellSize + padding),
+        y: 20 + row * (cellSize + padding),
+        color: colorScale(value),
+      };
+    });
+
+    const heatmapHeight = 20 + rows * (cellSize + padding);
+
+    return { cells, colorScale, cellSize, cols, rows, absMax, heatmapHeight, heatmapCenterX };
+  }, [embedding, dimensions]);
+
+  const arrowStartY = heatmapHeight + 20;
+  const arrowEndY = arrowStartY + 40;
+  const circleRadius = 12;
+  const circleY = arrowEndY + circleRadius + 10;
+
+  return (
+    <div ref={containerRef} className="w-full overflow-x-auto">
+      <svg
+        ref={svgRef}
+        width={dimensions.width}
+        height={circleY + circleRadius + 20}
+        className="w-full"
+      >
+        {cells.map((cell) => (
+          <rect
+            key={cell.index}
+            x={cell.x}
+            y={cell.y}
+            width={cellSize}
+            height={cellSize}
+            fill={cell.color}
+          />
+        ))}
+        
+        <line
+          x1={heatmapCenterX}
+          y1={arrowStartY}
+          x2={heatmapCenterX}
+          y2={arrowEndY}
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-muted-foreground"
+        />
+        
+        <polygon
+          points={`${heatmapCenterX},${arrowEndY} ${heatmapCenterX - 6},${arrowEndY - 8} ${heatmapCenterX + 6},${arrowEndY - 8}`}
+          fill="currentColor"
+          className="text-muted-foreground"
+        />
+        
+        <circle
+          cx={heatmapCenterX}
+          cy={circleY}
+          r={circleRadius}
+          fill={color}
+          stroke="currentColor"
+          strokeWidth="1"
+          className="text-border"
+        />
+      </svg>
+    </div>
+  );
+};
 
 const DiarizationDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -59,41 +176,9 @@ const DiarizationDetailPage = () => {
     fetchData();
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <SmartBackButton defaultPath="/transcript" />
-        </div>
-        <div className="border rounded-lg p-8 text-center">
-          <p className="text-muted-foreground">Loading diarization...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !diarization) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <SmartBackButton defaultPath="/transcript" />
-        </div>
-        <div className="border rounded-lg p-8 text-center">
-          <p className="text-red-500">{error || "Diarization not found"}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const color = embeddingToColor(diarization.embedding) || "#eab308";
-  const duration = diarization.end.getTime() - diarization.start.getTime();
-  const durationSeconds = Math.floor(duration / 1000);
-  const durationMinutes = Math.floor(durationSeconds / 60);
-  const durationSecondsRemainder = durationSeconds % 60;
-
   const loadAudio = async () => {
     if (!diarization || audioUrl) return;
-
+    console.log("loading audio", diarization);
     setAudioLoading(true);
     try {
       const originalId = diarization.original_id || diarization.original;
@@ -101,8 +186,8 @@ const DiarizationDetailPage = () => {
         ? originalId.toString()
         : String(originalId);
 
-      const startParam = diarization.start.toISOString();
-      const endParam = diarization.end.toISOString();
+      const startParam = (diarization.start.getTime() / 1000).toString();
+      const endParam = (diarization.end.getTime() / 1000).toString();
 
       const blob = await apiClient.getBlob(
         `/api/audio/wav?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}&original_id=${encodeURIComponent(originalIdStr)}`
@@ -119,7 +204,7 @@ const DiarizationDetailPage = () => {
   };
 
   const handlePlayPause = () => {
-    if (!audioRef.current) {
+    if (!audioUrl) {
       loadAudio().then(() => {
         setTimeout(() => {
           audioRef.current?.play();
@@ -128,6 +213,8 @@ const DiarizationDetailPage = () => {
       });
       return;
     }
+
+    if (!audioRef.current) return;
 
     if (isPlaying) {
       audioRef.current.pause();
@@ -171,6 +258,38 @@ const DiarizationDetailPage = () => {
     };
   }, [audioUrl]);
 
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <SmartBackButton defaultPath="/transcript" />
+        </div>
+        <div className="border rounded-lg p-8 text-center">
+          <p className="text-muted-foreground">Loading diarization...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !diarization) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <SmartBackButton defaultPath="/transcript" />
+        </div>
+        <div className="border rounded-lg p-8 text-center">
+          <p className="text-red-500">{error || "Diarization not found"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const color = embeddingToColor(diarization.embedding) || "#eab308";
+  const duration = diarization.end.getTime() - diarization.start.getTime();
+  const durationSeconds = duration / 1000;
+  const durationMinutes = Math.floor(durationSeconds / 60);
+  const durationSecondsRemainder = durationSeconds % 60;
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
@@ -180,19 +299,9 @@ const DiarizationDetailPage = () => {
 
       <div className="border rounded-lg p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <div
-            className="w-6 h-6 rounded-full flex-shrink-0"
-            style={{ backgroundColor: color }}
-          />
+          
           <div>
             <div className="font-semibold">Speaker Identity</div>
-            <div className="text-sm text-muted-foreground">
-              {diarization.speaker ? (
-                <span className="font-mono">{diarization.speaker}</span>
-              ) : (
-                "Visual identifier for this voice"
-              )}
-            </div>
           </div>
         </div>
 
@@ -214,6 +323,7 @@ const DiarizationDetailPage = () => {
               )}
             </Button>
             <div className="flex-1">
+              {audioUrl && (
               <audio
                 ref={audioRef}
                 src={audioUrl || undefined}
@@ -223,6 +333,7 @@ const DiarizationDetailPage = () => {
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => setIsPlaying(false)}
               />
+              )}
             </div>
           </div>
           {!audioUrl && !audioLoading && (
@@ -248,14 +359,9 @@ const DiarizationDetailPage = () => {
             <div className="text-sm font-medium text-muted-foreground mb-1">Duration</div>
             <div className="text-lg">
               {durationMinutes > 0
-                ? `${durationMinutes}m ${durationSecondsRemainder}s`
-                : `${durationSecondsRemainder}s`}
+                ? `${durationMinutes}m ${durationSecondsRemainder.toFixed(0)}s`
+                : `${durationSecondsRemainder.toFixed(2)}s`}
             </div>
-            {diarization.duration && (
-              <div className="text-xs text-muted-foreground mt-1">
-                Stored: {diarization.duration.toFixed(2)}s
-              </div>
-            )}
           </div>
           {diarization.created_at && (
             <div>
@@ -305,35 +411,7 @@ const DiarizationDetailPage = () => {
             <div className="text-sm font-medium text-muted-foreground mb-2">
               Embedding Vector
             </div>
-            <div className="space-y-2">
-              <div className="text-sm">
-                <span className="font-medium">{diarization.embedding.length}</span> dimensions
-                <span className="text-xs text-muted-foreground ml-2">
-                  (normalized to [-1, 1])
-                </span>
-              </div>
-              {diarization.embedding.length > 0 && (
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>
-                    Range: [{Math.min(...diarization.embedding).toFixed(4)},{" "}
-                    {Math.max(...diarization.embedding).toFixed(4)}]
-                  </div>
-                  <div>
-                    Mean:{" "}
-                    {(
-                      diarization.embedding.reduce((a, b) => a + b, 0) /
-                      diarization.embedding.length
-                    ).toFixed(4)}
-                  </div>
-                  <div>
-                    L2 Norm:{" "}
-                    {Math.sqrt(
-                      diarization.embedding.reduce((sum, val) => sum + val * val, 0)
-                    ).toFixed(4)}
-                  </div>
-                </div>
-              )}
-            </div>
+            <EmbeddingHeatmap embedding={diarization.embedding} color={color} />
           </div>
         )}
       </div>

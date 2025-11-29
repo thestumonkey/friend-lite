@@ -202,7 +202,7 @@ export async function apiAudioWavHandler(
     const mongoResource = await getMongoResource(auth);
 
     const queryStart = new Date(
-      startDate.getTime() - MAX_CHUNK_DURATION_MS,
+      startDate.getTime() - 2 * MAX_CHUNK_DURATION_MS,
     );
     const query: Record<string, any> = {
       start: {
@@ -222,6 +222,8 @@ export async function apiAudioWavHandler(
       options: { sort: { start: 1 } },
     }) as any[];
 
+    console.log(`got ${chunks.length} chunks`);
+
     if (chunks.length === 0) {
       res.status(404).json({ error: "No audio chunks found for the specified range" });
       return;
@@ -232,11 +234,6 @@ export async function apiAudioWavHandler(
 
     for (const chunk of chunks) {
       const chunkStart = new Date(chunk.start).getTime();
-      const chunkEnd = chunkStart + (chunk.duration || 0) * 1000;
-
-      if (chunkEnd <= startDate.getTime() || chunkStart >= endDate.getTime()) {
-        continue;
-      }
 
       let chunkData: Uint8Array;
       if (chunk.data instanceof Uint8Array) {
