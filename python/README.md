@@ -194,7 +194,7 @@ uv run diarization_worker.py --limit 25 --max-chunks 10
 ```
 
 - `--limit` (optional): stop after processing a specific number of sequences.
-- `--max-chunks` (optional): cap how many consecutive chunks get merged per request (defaults to the `DIARIZATION_MAX_SEQUENCE_CHUNKS` env var, or 10).
+- `--max-chunks` (optional): cap how many consecutive chunks get merged per request (defaults to the `DIARIZATION_MAX_SEQUENCE_CHUNKS` env var, or 6).
 
 Environment variables:
 

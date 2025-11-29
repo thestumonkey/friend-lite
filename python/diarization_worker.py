@@ -30,7 +30,7 @@ import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 DIARIZATION_SERVER_URL = os.environ.get('DIARIZATION_SERVER_URL', 'http://localhost:8085').rstrip('/')
-MAX_SEQUENCE_CHUNKS = max(1, int(os.environ.get('DIARIZATION_MAX_SEQUENCE_CHUNKS', '10')))
+MAX_SEQUENCE_CHUNKS = max(1, int(os.environ.get('DIARIZATION_MAX_SEQUENCE_CHUNKS', '6')))
 
 import numpy as np
 from chunking import read_codec, array_to_wav, sample_rate
@@ -193,10 +193,11 @@ def get_diarization_sequences(limit=10, filters=None, max_sequence_length=MAX_SE
             yield seq
 
 
-def combine_chunks_to_wav(sequence: DiarizationSequence) -> io.BytesIO:
+def combine_chunks_to_wav(sequence: DiarizationSequence) -> tuple[io.BytesIO, int]:
     """
-    Combine opus chunks into a single WAV file.
+    Combine opus chunks into a single WAV file, tracking total samples.
     Handles gaps between chunks by inserting silence.
+    Returns tuple of WAV BytesIO and number of audio samples.
     """
     audio_arrays = []
     current_time = sequence.start
@@ -226,17 +227,42 @@ def combine_chunks_to_wav(sequence: DiarizationSequence) -> io.BytesIO:
     combined_audio = np.concatenate(audio_arrays, axis=0)
 
     # Convert to WAV
-    return array_to_wav(combined_audio, sample_rate=sample_rate)
+    return array_to_wav(combined_audio, sample_rate=sample_rate), len(combined_audio)
 
 
-def claim_sequence(seq: DiarizationSequence, worker_id: str) -> bool:
+def _get_claim_owner(chunk_id: ObjectId) -> Optional[str]:
+    doc = call_resource('tech.mycelia.mongo', {
+        "action": "findOne",
+        "collection": "audio_chunks",
+        "query": {'_id': chunk_id},
+        "options": {"projection": {"processing_by": 1}},
+    })
+    if doc:
+        return doc.get('processing_by')
+    return None
+
+
+def count_pending_chunks_for_original(original_id: ObjectId) -> Optional[int]:
+    filters = {'original_id': original_id}
+    query = _build_pending_chunk_filters(filters)
+    result = call_resource('tech.mycelia.mongo', {
+        "action": "count",
+        "collection": "audio_chunks",
+        "query": query
+    })
+    return int(result) if result is not None else None
+
+
+def claim_sequence(seq: DiarizationSequence, worker_id: str) -> tuple[bool, Optional[str]]:
     chunk_ids = [chunk['_id'] for chunk in seq.chunks]
     success = claim_chunks(chunk_ids, worker_id)
 
     if not success:
         release_sequence(seq, worker_id)
+        owner = _get_claim_owner(chunk_ids[0]) if chunk_ids else None
+        return False, owner
 
-    return success
+    return True, None
 
 
 def release_sequence(seq: DiarizationSequence, worker_id: str):
@@ -254,14 +280,21 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
     chunks_marked = 0
     original_id = str(sequence.original_id)
 
+    payload_bytes = 0
+    payload_duration = 0.0
+
     try:
-        if not claim_sequence(sequence, worker_id):
-            log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  skipped (claimed)')
+        claimed, claimed_by = claim_sequence(sequence, worker_id)
+        if not claimed:
+            claimant_text = f' by {claimed_by}' if claimed_by else ''
+            log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  skipped (claimed{claimant_text})')
             return {"status": "skipped", "chunks": 0, "chunks_diarized": 0, "duration": 0, "segments": 0}
 
         # Combine chunks into WAV file
-        wav_file = combine_chunks_to_wav(sequence)
+        wav_file, total_samples = combine_chunks_to_wav(sequence)
         wav_file.seek(0)
+        payload_bytes = wav_file.getbuffer().nbytes
+        payload_duration = total_samples / sample_rate if total_samples else 0.0
 
         # Call diarization API
         response = requests.post(
@@ -281,9 +314,13 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
             duration = end_time - start_time
             chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
             chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
+            remaining_in_sequence = max(chunks_count - chunks_marked, 0)
+            remaining_for_original = count_pending_chunks_for_original(sequence.original_id)
+            remaining_original_display = remaining_for_original if remaining_for_original is not None else 'unknown'
             log_info(
                 f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
-                f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  no_segments'
+                f'processed={chunks_marked}/{chunks_count} (seq_left={remaining_in_sequence}, orig_left={remaining_original_display}) @ {chunk_rate_display}  '
+                f'no_segments  payload={payload_bytes / (1024 * 1024):.2f} MiB/{payload_duration:.1f}s'
             )
             return {
                 "status": "no_segments",
@@ -332,9 +369,13 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
         duration = end_time - start_time
         chunk_rate = (chunks_marked / duration) if chunks_marked and duration > 0 else None
         chunk_rate_display = f'{chunk_rate:.2f} ch/s' if chunk_rate else 'n/a'
+        remaining_in_sequence = max(chunks_count - chunks_marked, 0)
+        remaining_for_original = count_pending_chunks_for_original(sequence.original_id)
+        remaining_original_display = remaining_for_original if remaining_for_original is not None else 'unknown'
         log_info(
             f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
-            f'processed={chunks_marked}/{chunks_count} @ {chunk_rate_display}  diarized  {saved_segments} segments'
+            f'processed={chunks_marked}/{chunks_count} (seq_left={remaining_in_sequence}, orig_left={remaining_original_display}) @ {chunk_rate_display}  '
+            f'diarized  {saved_segments} segments  payload={payload_bytes / (1024 * 1024):.2f} MiB/{payload_duration:.1f}s'
         )
         return {
             "status": "diarized",
@@ -349,6 +390,31 @@ def diarize_sequence(sequence: DiarizationSequence, worker_id: str):
         release_sequence(sequence, worker_id)
         log_info(f'{timestamp}  {chunks_count:3d} chunks  {original_id}  ERROR: ReadTimeout')
         log_info(f'  → Increase timeout or check diarization server at {DIARIZATION_SERVER_URL}')
+        return {
+            "status": "error",
+            "chunks": 0,
+            "chunks_diarized": 0,
+            "duration": end_time - start_time,
+            "segments": 0
+        }
+
+    except requests.exceptions.HTTPError as http_err:
+        end_time = time.time()
+        release_sequence(sequence, worker_id)
+        status_code = http_err.response.status_code if http_err.response else None
+        extra_context = ''
+        if status_code == 413:
+            extra_context = (
+                f'payload={payload_bytes / (1024 * 1024):.2f} MiB/'
+                f'{payload_duration:.1f}s exceeded server limit; '
+                'lower --max-chunks or DIARIZATION_MAX_SEQUENCE_CHUNKS.'
+            )
+        elif status_code == 404:
+            extra_context = 'endpoint not found; verify DIARIZATION_SERVER_URL or server routing.'
+        log_info(
+            f'{timestamp}  {chunks_count:3d} chunks  {original_id}  '
+            f'ERROR: {status_code} {http_err} {extra_context}'.rstrip()
+        )
         return {
             "status": "error",
             "chunks": 0,
@@ -464,9 +530,13 @@ def process_diarization_sequences(limit=None, max_workers=1, worker_id=None, max
                 remaining_chunks = max(pending_chunks_total - completed_chunks, 0)
             eta_seconds = (remaining_chunks / chunks_per_sec) if chunks_per_sec and remaining_chunks is not None and chunks_per_sec > 0 else None
 
+            total_display = f"{completed_chunks}/{pending_chunks_total}" if pending_chunks_total is not None else f"{completed_chunks}/?"
+            remaining_display = str(remaining_chunks) if remaining_chunks is not None else 'n/a'
             pbar.set_postfix(
                 seqs=processed_count,
-                chunks=completed_chunks,
+                chunks=total_display,
+                rem=remaining_display,
+                skipped=stats['skipped'],
                 ch_sec=f"{chunks_per_sec:.2f}" if chunks_per_sec else 'n/a',
                 eta=_format_eta(eta_seconds),
                 errors=stats['error']
