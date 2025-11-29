@@ -203,6 +203,23 @@ Environment variables:
 
 Progress logs stream to the console (via `tqdm`) and to `python/logs/diarization_worker.log`.
 
+#### Cleanup Stuck Claims (`debug/cleanup_claims.py`)
+
+Debug helper to inspect and clear stuck diarization claims when chunks remain marked as "claimed" by a crashed worker.
+
+```bash
+cd python
+uv run debug/cleanup_claims.py              # show current claims
+uv run debug/cleanup_claims.py --clean      # clear claims (verifies no workers running)
+uv run debug/cleanup_claims.py --clean --force  # force clear (skip worker check)
+```
+
+Options:
+- `--collection <name>`: MongoDB collection (default: `audio_chunks`)
+- `--worker-id <id>`: Limit to specific worker
+- `--clean`: Perform cleanup (default: show only)
+- `--force`: Skip running-worker check
+
 ### Transcription (`stt.py`)
 Speech-to-text transcription services.
 

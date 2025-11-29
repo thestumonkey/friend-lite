@@ -2,16 +2,22 @@
 Debug helper to inspect and clear stuck diarization claims.
 
 Usage:
-    uv run python/debug/cleanup_claims.py            # show current claims
-    uv run python/debug/cleanup_claims.py --clean    # clear claims (if safe)
+    cd python
+    uv run debug/cleanup_claims.py            # show current claims
+    uv run debug/cleanup_claims.py --clean    # clear claims (if safe)
 """
 from __future__ import annotations
 
 import argparse
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable
+
+# Add parent directory to path so we can import lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lib.resources import call_resource
 
