@@ -88,7 +88,10 @@ async function startServer(host: string, port: number, skipChecks = false) {
 
   app.disable("x-powered-by");
   app.use(cors());
-  app.use(morgan("tiny"));
+  // Skip logging for health check endpoints to reduce noise
+  app.use(morgan("tiny", {
+    skip: (req: Request) => req.url === "/health" || req.url === "/"
+  }));
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -119,7 +122,10 @@ async function startServer(host: string, port: number, skipChecks = false) {
   });
 
   app.use((req: Request, _res: Response, next: () => void) => {
-    console.log(`Incoming request: ${req.method} ${req.url}`);
+    // Skip logging health check requests to reduce noise
+    if (req.url !== "/health" && req.url !== "/") {
+      console.log(`Incoming request: ${req.method} ${req.url}`);
+    }
     next();
   });
 
