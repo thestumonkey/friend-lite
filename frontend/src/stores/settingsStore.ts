@@ -44,13 +44,11 @@ interface SettingsState {
 }
 
 function getDefaultApiEndpoint(): string {
-  if (
-    typeof window !== "undefined" && window.location.hostname === "localhost" &&
-    window.location.port === "8080"
-  ) {
-    return "http://host.docker.internal:5173";
-  }
-  return "http://localhost:5173";
+  // Use VITE_API_URL if set during build, otherwise fallback to localhost:5173
+  // When accessed via localhost:3002 (Docker container mapped port),
+  // use localhost:5100 (test) or localhost:5173 (dev) since the backend is also exposed on localhost
+  // The browser will connect directly to the backend's exposed port
+  return import.meta.env.VITE_API_URL || "http://localhost:5173";
 }
 
 const DEFAULT_API_ENDPOINT = getDefaultApiEndpoint();
