@@ -261,6 +261,7 @@ export class ObjectsResource
       case "create": {
         const doc = {
           ...input.object,
+          userId: auth.principal,  // Auto-inject user_id from JWT
           version: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -290,7 +291,7 @@ export class ObjectsResource
         const object = await mongo({
           action: "findOne",
           collection: "objects",
-          query: { _id: objectId },
+          query: { _id: objectId, userId: auth.principal },  // Auto-scope by user
         });
         if (!object) {
           throw new Error("Object not found");
@@ -307,7 +308,7 @@ export class ObjectsResource
         const current = await mongo({
           action: "findOne",
           collection: "objects",
-          query: { _id: objectId },
+          query: { _id: objectId, userId: auth.principal },  // Auto-scope by user
         });
         if (!current) {
           throw new Error("Object not found");
@@ -383,7 +384,7 @@ export class ObjectsResource
         const current = await mongo({
           action: "findOne",
           collection: "objects",
-          query: { _id: objectId },
+          query: { _id: objectId, userId: auth.principal },  // Auto-scope by user
         });
         if (!current) {
           throw new Error("Object not found");
@@ -392,7 +393,7 @@ export class ObjectsResource
         const result = await mongo({
           action: "deleteOne",
           collection: "objects",
-          query: { _id: objectId },
+          query: { _id: objectId, userId: auth.principal },  // Auto-scope by user
         });
 
         await this.recordHistory(
@@ -410,6 +411,12 @@ export class ObjectsResource
 
       case "list": {
         let query = input.filters || {};
+
+        // Auto-scope all queries by user
+        query = {
+          ...query,
+          userId: auth.principal,
+        };
 
         if (input.options?.hasTimeRanges) {
           query = {
@@ -545,7 +552,7 @@ export class ObjectsResource
         const objectId = new ObjectId(input.id as string);
 
         const pipeline = [
-          { $match: { isRelationship: true } },
+          { $match: { isRelationship: true, userId: auth.principal } },  // Auto-scope by user
           {
             $match: {
               $or: [
@@ -631,6 +638,16 @@ export class ObjectsResource
       case "getHistory": {
         const objectId = new ObjectId(input.id as string);
 
+        // First verify user owns this object
+        const object = await mongo({
+          action: "findOne",
+          collection: "objects",
+          query: { _id: objectId, userId: auth.principal },
+        });
+        if (!object) {
+          throw new Error("Object not found or access denied");
+        }
+
         const findOptions: any = {
           sort: { timestamp: -1 },
         };
@@ -658,6 +675,7 @@ export class ObjectsResource
 
       case "exploreTimeRange": {
         const timeRangeQuery = {
+          userId: auth.principal,  // Auto-scope by user
           timeRanges: {
             $elemMatch: {
               start: { $lte: input.end },
