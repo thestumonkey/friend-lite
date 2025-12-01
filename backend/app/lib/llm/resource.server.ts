@@ -141,8 +141,14 @@ export class LLMResource implements Resource<LLMRequest, LLMResponse> {
             model: model.name,
           };
 
+          const url = model.baseUrl.replace(/\/$/, "") + "/chat/completions";
+
+          console.log("[LLM] Making request to:", url);
+          console.log("[LLM] Request body:", JSON.stringify(requestBody, null, 2));
+          console.log("[LLM] Stream requested:", input.stream || false);
+
           const proxyResponse = await fetch(
-            model.baseUrl.replace(/\/$/, "") + "/chat/completions",
+            url,
             {
               method: "POST",
               headers: {
@@ -155,6 +161,9 @@ export class LLMResource implements Resource<LLMRequest, LLMResponse> {
               }),
             },
           );
+
+          console.log("[LLM] Response status:", proxyResponse.status);
+          console.log("[LLM] Response headers:", Object.fromEntries(proxyResponse.headers.entries()));
 
           span.setAttributes({
             "llm.response_status": proxyResponse.status,
@@ -177,6 +186,7 @@ export class LLMResource implements Resource<LLMRequest, LLMResponse> {
 
           // Check if streaming is requested
           if (input.stream) {
+            console.log("[LLM] Returning streaming response");
             span.setStatus({ code: 1 }); // Success
             return new Response(proxyResponse.body, {
               headers: {
@@ -188,12 +198,17 @@ export class LLMResource implements Resource<LLMRequest, LLMResponse> {
           }
 
           const responseText = await proxyResponse.text();
+          console.log("[LLM] Response body (first 500 chars):", responseText.substring(0, 500));
 
           try {
             const jsonResponse = JSON.parse(responseText);
+            console.log("[LLM] Successfully parsed JSON response");
             span.setStatus({ code: 1 }); // Success
             return jsonResponse;
           } catch (parseError) {
+            console.error("[LLM] Failed to parse JSON response");
+            console.error("[LLM] Parse error:", parseError);
+            console.error("[LLM] Full response text:", responseText);
             llmErrorsCounter.add(1, {
               error_type: "json_parse_error",
               model: input.model,

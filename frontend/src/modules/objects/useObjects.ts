@@ -7,6 +7,7 @@ type ObjectsState = {
   objects: Object[];
   loading: boolean;
   error: string | null;
+  hasFetched: boolean;
   refresh: () => Promise<void>;
   fetchInitial: () => Promise<void>;
 };
@@ -15,34 +16,35 @@ export const useObjectsStore = create<ObjectsState>((set, get) => ({
   objects: [],
   loading: false,
   error: null,
+  hasFetched: false,
   refresh: async () => {
     try {
       set({ loading: true, error: null });
       const objects = await fetchObjects();
-      set({ objects });
+      set({ objects, hasFetched: true });
     } catch (err) {
       const error = err instanceof Error
         ? err.message
         : "Failed to fetch objects";
       console.error("Failed to fetch objects:", err);
-      set({ error });
+      set({ error, hasFetched: true });
     } finally {
       set({ loading: false });
     }
   },
   fetchInitial: async () => {
     const state = get();
-    if (state.loading || state.objects.length > 0) return;
+    if (state.loading || state.hasFetched) return;
     set({ loading: true, error: null });
     try {
       const objects = await fetchObjects();
-      set({ objects });
+      set({ objects, hasFetched: true });
     } catch (err) {
       const error = err instanceof Error
         ? err.message
         : "Failed to fetch objects";
       console.error("Failed to fetch objects:", err);
-      set({ error });
+      set({ error, hasFetched: true });
     } finally {
       set({ loading: false });
     }
