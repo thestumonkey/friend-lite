@@ -128,9 +128,12 @@ export async function decodeAccessToken(
     return null;
   }
 
+  // IMPORTANT: Use owner as principal so object ownership works correctly
+  // Objects are created with userId = auth.principal
+  // If we use keyDoc._id, objects won't be accessible by the actual user
   return signJWT(
     keyDoc.owner,
-    keyDoc._id!.toString(),
+    keyDoc.owner,  // Use owner (user ID) as principal, not API key ID
     keyDoc.policies,
     duration,
   );

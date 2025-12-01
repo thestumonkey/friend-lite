@@ -10,6 +10,7 @@ import {
   ResourcePath,
 } from "./resources.ts";
 import { EJSON } from "bson";
+import { verifyFriendLiteToken } from "./friend-lite-jwt.ts";
 
 export interface APIKey {
   hashedKey: string;
@@ -80,19 +81,19 @@ export const verifyToken = async (token: string): Promise<null | Auth> => {
 
 export const authenticate = async (req: Request): Promise<Auth | null> => {
   const authHeader = req.headers.authorization;
-  
+
   let token: string | undefined;
-  
+
   if (authHeader) {
     token = authHeader.split(" ")[1];
   }
-  
+
   if (!token) {
     if ("query" in req && req.query) {
       token = (req.query as any).token as string | undefined;
     }
   }
-  
+
   if (!token && req.url) {
     try {
       const url = new URL(req.url);
@@ -111,7 +112,15 @@ export const authenticate = async (req: Request): Promise<Auth | null> => {
     return null;
   }
 
-  return verifyToken(token);
+  // Try Friend-Lite JWT first (uses same SECRET_KEY but creates proper Auth object with policies)
+  let auth = await verifyFriendLiteToken(token);
+
+  if (!auth) {
+    // Fall back to Mycelia native token verification
+    auth = await verifyToken(token);
+  }
+
+  return auth;
 };
 
 export const authenticateOr401 = async (

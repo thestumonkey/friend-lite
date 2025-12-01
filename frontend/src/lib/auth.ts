@@ -36,6 +36,13 @@ export async function exchangeApiKeyForJWT(
 }
 
 export async function getCurrentJWT(): Promise<string | null> {
+  // First, check if we have a Friend-Lite JWT token in localStorage
+  const friendLiteJWT = localStorage.getItem('mycelia_jwt_token');
+  if (friendLiteJWT) {
+    return friendLiteJWT;
+  }
+
+  // Fall back to OAuth client credentials flow
   const { apiEndpoint, clientId, clientSecret } = useSettingsStore.getState();
 
   if (!clientId || !clientSecret) {
