@@ -38,12 +38,19 @@ const consoleMetricReader = new PeriodicExportingMetricReader({
   exportIntervalMillis: 5000,
 });
 
+// Disable console logging unless OTEL_CONSOLE_LOGGING=true
+const enableConsoleLogging = Deno.env.get("OTEL_CONSOLE_LOGGING") === "true";
+
 const sdk = new NodeSDK({
-  spanProcessors: [
-    new BatchSpanProcessor(traceExporter),
-    new BatchSpanProcessor(consoleTraceExporter),
-  ],
-  metricReaders: [otlpMetricReader, consoleMetricReader],
+  spanProcessors: enableConsoleLogging
+    ? [
+        new BatchSpanProcessor(traceExporter),
+        new BatchSpanProcessor(consoleTraceExporter),
+      ]
+    : [new BatchSpanProcessor(traceExporter)],
+  metricReaders: enableConsoleLogging
+    ? [otlpMetricReader, consoleMetricReader]
+    : [otlpMetricReader],
   instrumentations: [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
