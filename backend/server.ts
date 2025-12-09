@@ -124,7 +124,7 @@ async function startServer(host: string, port: number, skipChecks = false) {
   app.use((req: Request, _res: Response, next: () => void) => {
     // Skip logging health check requests to reduce noise
     if (req.url !== "/health" && req.url !== "/") {
-      console.log(`Incoming request: ${req.method} ${req.url}`);
+      console.log(`\n===== ${req.method} ${req.url} =====`);
     }
     next();
   });

@@ -88,6 +88,13 @@ export async function oauthTokenHandler(req: Request, res: Response) {
   }
 
   // Handle client_credentials grant type (existing flow)
+  console.log("=== OAuth client_credentials flow ===");
+  console.log("Extracted credentials:", {
+    clientId: creds.clientId,
+    clientSecretPrefix: creds.clientSecret?.substring(0, 15) + "...",
+    grantType: grantType
+  });
+
   const parsed = tokenRequestSchema.safeParse({
     grant_type: grantType,
     client_secret: creds.clientSecret || undefined,
@@ -95,26 +102,40 @@ export async function oauthTokenHandler(req: Request, res: Response) {
   });
 
   if (!parsed.success) {
+    console.log("Schema validation failed:", parsed.error);
     res.status(400).json({ error: "invalid_request" });
     return;
   }
+  console.log("Schema validation passed");
 
   const keyDoc = await verifyApiKey(creds.clientSecret);
+  console.log("verifyApiKey result:", keyDoc ? `Found key with _id: ${keyDoc._id}` : "null");
   if (!keyDoc) {
+    console.log("ERROR: API key verification failed - no key document found");
     res.status(401).json({ error: "invalid_client" });
     return;
   }
 
+  console.log("Comparing _id:", {
+    keyDocId: keyDoc._id?.toString(),
+    credsClientId: creds.clientId,
+    match: keyDoc._id?.toString() === creds.clientId
+  });
   if (keyDoc._id?.toString() !== creds.clientId) {
+    console.log("ERROR: Client ID mismatch");
     res.status(401).json({ error: "invalid_client" });
     return;
   }
+  console.log("Client ID match verified");
 
   const jwt = await decodeAccessToken(creds.clientSecret, "1 day");
+  console.log("JWT generation:", jwt ? "Success" : "Failed");
   if (!jwt) {
+    console.log("ERROR: JWT generation failed");
     res.status(401).json({ error: "invalid_client" });
     return;
   }
+  console.log("=== OAuth flow completed successfully ===");
 
   const body = {
     access_token: jwt,

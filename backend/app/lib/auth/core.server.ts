@@ -33,12 +33,13 @@ class AccessLogger {
       actions: string[];
     }[],
   ) {
-    console.log({
-      principal: auth.principal,
-      resource: resource.code,
-      actions,
-    });
-    // TODO: access log
+    // Format actions for more readable output
+    const actionsSummary = actions.map(a =>
+      `${Array.isArray(a.path) ? a.path.join('/') : a.path}:[${a.actions.join(',')}]`
+    ).join(', ');
+
+    console.log(`[Permission Check] principal=${auth.principal} resource=${resource.code} actions={${actionsSummary}}`);
+    // TODO: access log to database
   }
 }
 

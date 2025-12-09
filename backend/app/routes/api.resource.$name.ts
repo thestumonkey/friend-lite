@@ -32,6 +32,10 @@ export async function apiResourceHandler(req: Request, res: ExpressResponse) {
       });
 
       const body = req.body;
+
+      // Log request body for debugging
+      console.log(`[API Request] ${toolName}:`, JSON.stringify(body, null, 2));
+
       const resource = defaultResourceManager.listResources().find((r) =>
         r.code === toolName
       );
@@ -68,8 +72,10 @@ export async function apiResourceHandler(req: Request, res: ExpressResponse) {
       if (result instanceof globalThis.Response) {
         // Convert Response to Express response
         const responseBody = await result.json();
+        console.log(`[API Response] ${toolName}:`, JSON.stringify(responseBody, null, 2));
         res.status(result.status).json(responseBody);
       } else {
+        console.log(`[API Response] ${toolName}:`, JSON.stringify(result, null, 2));
         res.json(result);
       }
     } catch (error) {
@@ -80,6 +86,12 @@ export async function apiResourceHandler(req: Request, res: ExpressResponse) {
       span.setAttributes({
         "error": true,
         "error.message": error instanceof Error ? error.message : String(error),
+      });
+
+      // Log error details
+      console.error(`[API Error] ${toolName}:`, {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
 
       // Re-throw error to be handled by error middleware

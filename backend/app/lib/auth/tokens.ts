@@ -4,7 +4,7 @@ import { SignJWT } from "jose";
 import { APIKey, Auth, getServerAuth } from "./core.server.ts";
 import { Policy } from "./resources.ts";
 import { z } from "zod";
-import { getMongoResource } from "@/lib/mongo/core.server.ts";
+import { getMongoResource, getRootDB } from "@/lib/mongo/core.server.ts";
 import { ObjectId } from "mongodb";
 
 const OPEN_PREFIX_LENGTH = 16;
@@ -74,29 +74,50 @@ export async function generateApiKeyWithId(
 }
 
 export async function verifyApiKey(apiKey: string): Promise<APIKey | null> {
-  const auth = await getServerAuth();
-  const mongo = await getMongoResource(auth);
+  console.log("[verifyApiKey] Starting verification");
+  console.log("[verifyApiKey] API key prefix:", apiKey.slice(0, OPEN_PREFIX_LENGTH));
 
-  const keyDoc = await mongo({
-    action: "findOne",
-    collection: "api_keys",
-    query: {
-      openPrefix: apiKey.slice(0, OPEN_PREFIX_LENGTH),
-      isActive: true,
-    },
-  });
+  // Use direct database connection to bypass permission checks
+  // (API key verification is used during authentication, before permissions are established)
+  const db = await getRootDB();
+  console.log("[verifyApiKey] Database name:", db.databaseName);
+
+  const collection = db.collection("api_keys");
+
+  const query = {
+    openPrefix: apiKey.slice(0, OPEN_PREFIX_LENGTH),
+    isActive: true,
+  };
+  console.log("[verifyApiKey] Query:", JSON.stringify(query));
+
+  // Debug: Count all documents in collection
+  const totalCount = await collection.countDocuments({});
+  console.log("[verifyApiKey] Total API keys in collection:", totalCount);
+
+  const keyDoc = await collection.findOne(query);
+
+  console.log("[verifyApiKey] Found keyDoc:", keyDoc ? `_id: ${keyDoc._id}, owner: ${keyDoc.owner}` : "null");
 
   if (!keyDoc) {
+    console.log("[verifyApiKey] No key document found in database");
     return null;
   }
 
   const salt = Buffer.from(keyDoc.salt, "base64");
   const hashedInput = hashApiKey(apiKey, salt);
 
+  console.log("[verifyApiKey] Hash comparison:", {
+    computed: hashedInput,
+    stored: keyDoc.hashedKey,
+    match: hashedInput === keyDoc.hashedKey
+  });
+
   if (hashedInput !== keyDoc.hashedKey) {
+    console.log("[verifyApiKey] Hash mismatch");
     return null;
   }
 
+  console.log("[verifyApiKey] Verification successful");
   return keyDoc as APIKey;
 }
 
