@@ -68,6 +68,10 @@ class AppConfig:
         self.qdrant_base_url = os.getenv("QDRANT_BASE_URL", "qdrant")
         self.qdrant_port = os.getenv("QDRANT_PORT", "6333")
         self.memory_provider = os.getenv("MEMORY_PROVIDER", "chronicle").lower()
+        # Map legacy provider names to current names
+        if self.memory_provider in ("friend-lite", "friend_lite"):
+            logger.debug(f"Mapping legacy provider '{self.memory_provider}' to 'chronicle'")
+            self.memory_provider = "chronicle"
 
         # Redis Configuration
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
