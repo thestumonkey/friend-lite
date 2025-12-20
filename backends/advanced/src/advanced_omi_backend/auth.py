@@ -23,39 +23,81 @@ from advanced_omi_backend.users import User, UserCreate, get_user_db
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "86400"))
 
 # JWT configuration
-JWT_LIFETIME_SECONDS = 86400  # 24 hours
+JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "86400"))
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+# Cached config values (lazy-loaded from config.yaml/secrets.yaml)
+_secret_key: Optional[str] = None
+_admin_password: Optional[str] = None
+_admin_email: Optional[str] = None
 
 
-@overload
-def _verify_configured(var_name: str, *, optional: Literal[False] = False) -> str: ...
-@overload
-def _verify_configured(var_name: str, *, optional: Literal[True]) -> Optional[str]: ...
+def get_secret_key() -> str:
+    """Get AUTH_SECRET_KEY from secrets.yaml (lazy-loaded)."""
+    global _secret_key
+    if _secret_key is None:
+        # Try environment variable first (for backward compatibility)
+        _secret_key = os.getenv("AUTH_SECRET_KEY")
+        if not _secret_key:
+            # Load from config
+            try:
+                from advanced_omi_backend.config import get_config_parser
+                import asyncio
+
+                config_parser = get_config_parser()
+                config = asyncio.run(config_parser.load())
+                _secret_key = config.auth.secret_key
+
+                if not _secret_key:
+                    raise ValueError("AUTH_SECRET_KEY not found in secrets.yaml or environment")
+            except Exception as e:
+                logger.error(f"Failed to load AUTH_SECRET_KEY from config: {e}")
+                raise ValueError("AUTH_SECRET_KEY not configured") from e
+    return _secret_key
 
 
-def _verify_configured(var_name: str, *, optional: bool = False) -> Optional[str]:
-    value = os.getenv(var_name)
-    if not optional and not value:
-        raise ValueError(f"{var_name} is not set")
-    return value
+def get_admin_password() -> str:
+    """Get ADMIN_PASSWORD from environment (used for initial setup only)."""
+    global _admin_password
+    if _admin_password is None:
+        _admin_password = os.getenv("ADMIN_PASSWORD")
+        if not _admin_password:
+            raise ValueError("ADMIN_PASSWORD not set - required for admin user creation")
+    return _admin_password
 
 
-# Configuration from environment variables
-SECRET_KEY = _verify_configured("AUTH_SECRET_KEY")
-COOKIE_SECURE = _verify_configured("COOKIE_SECURE", optional=True) == "true"
+def get_admin_email() -> str:
+    """Get admin email from config (lazy-loaded)."""
+    global _admin_email
+    if _admin_email is None:
+        # Try environment variable first
+        _admin_email = os.getenv("ADMIN_EMAIL")
+        if not _admin_email:
+            # Load from config
+            try:
+                from advanced_omi_backend.config import get_config_parser
+                import asyncio
 
-# Admin user configuration
-ADMIN_PASSWORD = _verify_configured("ADMIN_PASSWORD")
-ADMIN_EMAIL = _verify_configured("ADMIN_EMAIL", optional=True) or "admin@example.com"
+                config_parser = get_config_parser()
+                config = asyncio.run(config_parser.load())
+                _admin_email = config.auth.admin_email or "admin@example.com"
+            except Exception:
+                _admin_email = "admin@example.com"
+    return _admin_email
 
 
 class UserManager(BaseUserManager[User, PydanticObjectId]):
     """User manager with minimal customization for fastapi-users."""
 
-    reset_password_token_secret = SECRET_KEY
-    verification_token_secret = SECRET_KEY
+    @property
+    def reset_password_token_secret(self) -> str:
+        return get_secret_key()
+
+    @property
+    def verification_token_secret(self) -> str:
+        return get_secret_key()
 
     def parse_id(self, value: str) -> PydanticObjectId:
         """Parse string ID to PydanticObjectId for MongoDB compatibility."""
@@ -100,7 +142,7 @@ bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 def get_jwt_strategy() -> JWTStrategy:
     """Get JWT strategy for token generation and validation."""
     return JWTStrategy(
-        secret=SECRET_KEY, lifetime_seconds=JWT_LIFETIME_SECONDS
+        secret=get_secret_key(), lifetime_seconds=JWT_LIFETIME_SECONDS
     )
 
 
@@ -132,7 +174,7 @@ def generate_jwt_for_user(user_id: str, user_email: str) -> str:
     }
 
     # Sign the token with the same secret key
-    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    token = jwt.encode(payload, get_secret_key(), algorithm="HS256")
     return token
 
 
@@ -202,17 +244,21 @@ def get_accessible_user_ids(user: User) -> list[str] | None:
 
 async def create_admin_user_if_needed():
     """Create admin user during startup if it doesn't exist and credentials are provided."""
-    if not ADMIN_PASSWORD:
+    try:
+        admin_password = get_admin_password()
+    except ValueError:
         logger.warning("Skipping admin user creation - ADMIN_PASSWORD not set")
         return
 
     try:
+        admin_email = get_admin_email()
+
         # Get user database
         user_db_gen = get_user_db()
         user_db = await user_db_gen.__anext__()
 
         # Check if admin user already exists by email
-        existing_admin = await user_db.get_by_email(ADMIN_EMAIL)
+        existing_admin = await user_db.get_by_email(admin_email)
 
         if existing_admin:
             logger.info(
@@ -225,8 +271,8 @@ async def create_admin_user_if_needed():
         user_manager = await user_manager_gen.__anext__()
 
         admin_create = UserCreate(
-            email=ADMIN_EMAIL,
-            password=ADMIN_PASSWORD,
+            email=admin_email,
+            password=admin_password,
             is_superuser=True,
             is_verified=True,
             display_name="Administrator",

@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from advanced_omi_backend.auth import (
-    ADMIN_EMAIL,
+    get_admin_email,
     get_user_db,
     UserManager,
 )
@@ -160,7 +160,7 @@ async def delete_user(
         user_email = existing_user.get("email", "")
         is_superuser = existing_user.get("is_superuser", False)
 
-        if is_superuser or user_email == ADMIN_EMAIL:
+        if is_superuser or user_email == get_admin_email():
             return JSONResponse(
                 status_code=403,
                 content={

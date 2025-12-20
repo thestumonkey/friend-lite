@@ -13,6 +13,8 @@ This package contains organized router modules for different functional areas:
 - health_routes: Health check endpoints
 - websocket_routes: WebSocket connection handling
 - settings_routes: Application settings management
+- wizard_routes: Setup wizard for initial configuration
+- services_routes: Docker service orchestration and management
 """
 
 from .audio_routes import router as audio_router
@@ -26,6 +28,8 @@ from .settings_routes import router as settings_router
 from .system_routes import router as system_router
 from .user_routes import router as user_router
 from .websocket_routes import router as websocket_router
+from .wizard_routes import router as wizard_router
+from .services_routes import router as services_router
 
 __all__ = [
    "audio_router",
@@ -39,4 +43,6 @@ __all__ = [
    "system_router",
    "user_router",
    "websocket_router",
+   "wizard_router",
+   "services_router",
 ]

@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 # Import all existing settings models
 from advanced_omi_backend.settings_models import (
-    ApiKeysSettings,
     AudioProcessingSettings,
     ConversationSettings,
     DiarizationSettings,
@@ -26,12 +25,8 @@ from advanced_omi_backend.settings_models import (
 
 
 class AuthConfig(BaseModel):
-    """Authentication and admin account configuration."""
+    """Authentication and admin account configuration (non-secret)."""
 
-    secret_key: str = Field(
-        default="",
-        description="JWT signing key (auto-generated if empty)"
-    )
     admin_name: str = Field(
         default="admin",
         description="Admin account name"
@@ -39,10 +34,6 @@ class AuthConfig(BaseModel):
     admin_email: str = Field(
         default="admin@example.com",
         description="Admin email address"
-    )
-    admin_password_hash: str = Field(
-        default="",
-        description="Bcrypt password hash (never store plaintext)"
     )
 
 
@@ -106,10 +97,6 @@ class ChronicleConfig(BaseModel):
     misc: MiscSettings = Field(
         default_factory=MiscSettings,
         description="Miscellaneous settings"
-    )
-    api_keys: ApiKeysSettings = Field(
-        default_factory=ApiKeysSettings,
-        description="External service API keys"
     )
 
     # Internal metadata (not shown in UI, runtime only)

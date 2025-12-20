@@ -48,6 +48,7 @@ services:
       - ../start-workers.sh:/app/start-workers.sh
       - ../data/audio_chunks:/app/audio_chunks
       - ../data:/app/data
+      - ../config:/app/config
     environment:
       # Service URLs (Docker internal network)
       - REDIS_URL=redis://redis:6379/${REDIS_DATABASE:-0}

@@ -117,7 +117,7 @@ async def health_check():
 
     overall_healthy = True
     critical_services_healthy = True
-    
+
     # Get configuration once at the start
     memory_provider = os.getenv("MEMORY_PROVIDER", "friend_lite")
     speaker_service_url = os.getenv("SPEAKER_SERVICE_URL")
@@ -125,7 +125,7 @@ async def health_check():
 
     # Check MongoDB (critical service)
     try:
-        await asyncio.wait_for(mongo_client.admin.command("ping"), timeout=5.0)
+        await asyncio.wait_for(mongo_client.admin.command("ping"), timeout=3.0)
         health_status["services"]["mongodb"] = {
             "status": "✅ Connected",
             "healthy": True,
@@ -134,7 +134,7 @@ async def health_check():
         }
     except asyncio.TimeoutError:
         health_status["services"]["mongodb"] = {
-            "status": "❌ Connection Timeout (5s)",
+            "status": "❌ Connection Timeout (3s)",
             "healthy": False,
             "critical": True,
             "url": MONGODB_URI,
@@ -157,7 +157,7 @@ async def health_check():
 
         # Get queue health (includes Redis connection test and worker count)
         queue_health = await asyncio.wait_for(
-            asyncio.to_thread(get_queue_health), timeout=5.0
+            asyncio.to_thread(get_queue_health), timeout=3.0
         )
 
         # Check if Redis is healthy
@@ -190,7 +190,7 @@ async def health_check():
 
     except asyncio.TimeoutError:
         health_status["services"]["redis"] = {
-            "status": "❌ Connection Timeout (5s)",
+            "status": "❌ Connection Timeout (3s)",
             "healthy": False,
             "critical": True,
             "url": os.getenv("REDIS_URL", "redis://localhost:6379/0"),
@@ -211,7 +211,7 @@ async def health_check():
 
     # Check LLM service (non-critical service - may not be running)
     try:
-        llm_health = await asyncio.wait_for(async_health_check(), timeout=8.0)
+        llm_health = await asyncio.wait_for(async_health_check(), timeout=3.0)
         health_status["services"]["audioai"] = {
             "status": llm_health.get("status", "❌ Unknown"),
             "healthy": "✅" in llm_health.get("status", ""),
@@ -223,7 +223,7 @@ async def health_check():
     except asyncio.TimeoutError:
         llm_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         health_status["services"]["audioai"] = {
-            "status": "⚠️ Connection Timeout (8s) - Service may not be running",
+            "status": "⚠️ Connection Timeout (3s) - Service may not be running",
             "healthy": False,
             "url": llm_base_url,
             "provider": os.getenv("LLM_PROVIDER", "openai"),
@@ -246,7 +246,7 @@ async def health_check():
         qdrant_url = f"http://{QDRANT_BASE_URL}:{QDRANT_PORT}"
         try:
             # Test Friend-Lite memory service connection with timeout
-            test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=8.0)
+            test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=3.0)
             if test_success:
                 health_status["services"]["memory_service"] = {
                     "status": "✅ Friend-Lite Memory Connected",
@@ -266,7 +266,7 @@ async def health_check():
                 overall_healthy = False
         except asyncio.TimeoutError:
             health_status["services"]["memory_service"] = {
-                "status": "⚠️ Friend-Lite Memory Timeout (8s) - Check Qdrant",
+                "status": "⚠️ Friend-Lite Memory Timeout (3s) - Check Qdrant",
                 "healthy": False,
                 "provider": "friend_lite",
                 "url": qdrant_url,
@@ -296,7 +296,7 @@ async def health_check():
         mycelia_url = os.getenv("MYCELIA_API_URL", "http://mycelia-backend:5100")
         try:
             # Test Mycelia memory service connection with timeout
-            test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=8.0)
+            test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=3.0)
             if test_success:
                 health_status["services"]["memory_service"] = {
                     "status": "✅ Mycelia Memory Connected",
@@ -316,7 +316,7 @@ async def health_check():
                 overall_healthy = False
         except asyncio.TimeoutError:
             health_status["services"]["memory_service"] = {
-                "status": "⚠️ Mycelia Memory Timeout (8s) - Check Mycelia service",
+                "status": "⚠️ Mycelia Memory Timeout (3s) - Check Mycelia service",
                 "healthy": False,
                 "provider": "mycelia",
                 "url": mycelia_url,
@@ -386,7 +386,7 @@ async def health_check():
             # Make a health check request to the speaker service
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f"{speaker_service_url}/health", timeout=aiohttp.ClientTimeout(total=5)
+                    f"{speaker_service_url}/health", timeout=aiohttp.ClientTimeout(total=3)
                 ) as response:
                     if response.status == 200:
                         health_status["services"]["speaker_recognition"] = {
@@ -405,7 +405,7 @@ async def health_check():
                         overall_healthy = False
         except asyncio.TimeoutError:
             health_status["services"]["speaker_recognition"] = {
-                "status": "⚠️ Connection Timeout (5s)",
+                "status": "⚠️ Connection Timeout (3s)",
                 "healthy": False,
                 "url": speaker_service_url,
                 "critical": False,
@@ -426,7 +426,7 @@ async def health_check():
             # Make a health check request to the OpenMemory MCP service
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f"{openmemory_mcp_url}/api/v1/apps/", timeout=aiohttp.ClientTimeout(total=5)
+                    f"{openmemory_mcp_url}/api/v1/apps/", timeout=aiohttp.ClientTimeout(total=3)
                 ) as response:
                     if response.status == 200:
                         health_status["services"]["openmemory_mcp"] = {
@@ -447,7 +447,7 @@ async def health_check():
                         overall_healthy = False
         except asyncio.TimeoutError:
             health_status["services"]["openmemory_mcp"] = {
-                "status": "⚠️ Connection Timeout (5s)",
+                "status": "⚠️ Connection Timeout (3s)",
                 "healthy": False,
                 "url": openmemory_mcp_url,
                 "provider": "openmemory_mcp",

@@ -3,17 +3,15 @@
 # Copy to config.yaml and customize for your deployment.
 #
 # DO NOT store secrets in this file - it is committed to git.
-# Actual secrets should go in config.yaml (which is gitignored).
+# Sensitive data (API keys, passwords) goes in secrets.yaml.
 
 version: 1.0.0
 wizard_completed: false
 
-# Authentication Configuration
+# Authentication Configuration (non-sensitive)
 auth:
-  secret_key: ''  # Auto-generated on first run if empty
   admin_name: admin
   admin_email: admin@example.com
-  admin_password_hash: ''  # Set via wizard or environment variable
 
 # Speech Detection Settings
 speech_detection:
@@ -79,13 +77,3 @@ infrastructure:
 misc:
   debug_dir: ./data/debug_dir
   langfuse_enable_telemetry: false
-
-# API Keys (leave empty - set via wizard or config.yaml)
-api_keys:
-  openai_api_key: null
-  deepgram_api_key: null
-  mistral_api_key: null
-  hf_token: null
-  langfuse_public_key: null
-  langfuse_secret_key: null
-  ngrok_authtoken: null
