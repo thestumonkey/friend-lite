@@ -207,6 +207,16 @@ else
     echo ""
 fi
 
+# Create external Docker network for cross-service communication
+echo -e "${BLUE}🌐 Setting up Docker network...${NC}"
+if ! docker network inspect chronicle-network >/dev/null 2>&1; then
+    docker network create chronicle-network
+    echo -e "${GREEN}   ✅ Created chronicle-network${NC}"
+else
+    echo -e "${GREEN}   ✅ chronicle-network already exists${NC}"
+fi
+echo ""
+
 # Start infrastructure
 echo -e "${BLUE}🏗️  Starting infrastructure...${NC}"
 if docker ps --filter "name=^mongo$" --filter "status=running" -q | grep -q .; then
