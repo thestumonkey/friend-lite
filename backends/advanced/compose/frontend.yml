@@ -4,16 +4,17 @@
 services:
   webui:
     build:
-      context: ../webui
+      context: ./webui
       dockerfile: Dockerfile
       args:
         - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
         - VITE_BACKEND_URL=${VITE_BACKEND_URL:-http://localhost:8000}
     env_file:
-      - ../../../.env.default  # Committed defaults
-      - ../.env                # Generated overrides (if exists)
-    ports:
-      - "${WEBUI_PORT:-3000}:80"
+      - ../../.env.default  # Committed defaults
+      - ./.env              # Generated overrides (if exists)
+    # NOTE: Ports defined in override files to prevent conflicts:
+    #   - compose/overrides/prod.yml (production nginx: port 80)
+    #   - compose/overrides/dev-webui.yml (dev server: port 5173)
     depends_on:
       backend:
         condition: service_healthy

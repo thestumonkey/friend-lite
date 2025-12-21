@@ -2,11 +2,11 @@
 # Root compose file using modular includes
 #
 # Usage:
-#   Development:  docker compose up
-#   With Mycelia:  docker compose --profile mycelia up
-#   With HTTPS:    docker compose --profile https up
-#   Testing:       docker compose -f docker-compose.yml -f compose/overrides/test.yml up
 #   Production:    docker compose -f docker-compose.yml -f compose/overrides/prod.yml up
+#   Dev Server:    docker compose -f docker-compose.yml -f compose/overrides/dev-webui.yml up
+#   Testing:       docker compose -f docker-compose.yml -f compose/overrides/test.yml up
+#
+# Note: Always use an override file - base config has no port mappings to avoid conflicts
 #
 # Structure:
 #   compose/backend.yml           - Backend API and workers
@@ -29,8 +29,8 @@ include:
   # Note: Mycelia moved to root level (../../compose/mycelia.yml)
   # To use Mycelia, run from project root: docker compose --profile mycelia up
 
-  # Development overrides (default)
-  - compose/overrides/dev.yml
+  # Note: For dev server with hot-reload, use explicit override:
+  #   docker compose -f docker-compose.yml -f compose/overrides/dev-webui.yml up
 
 # Shared network configuration
 networks:
