@@ -16,6 +16,9 @@ from .config_schema import ChronicleConfig
 from .secrets_schema import SecretsConfig
 
 yaml = YAML()
+yaml.default_flow_style = False
+yaml.preserve_quotes = True
+yaml.width = 400  # Set wider column width (default is 80)
 
 
 class CombinedConfig(BaseModel):
@@ -171,7 +174,17 @@ class ConfigParser:
         with open(self.secrets_path, 'w') as f:
             yaml.dump(secrets_config.model_dump(mode='json'), f)
 
-    async def update(self, updates: dict, updated_by: str = "user") -> None:
+        # Invalidate app_config cache after saving
+        try:
+            from advanced_omi_backend.app_config import get_app_config
+            app_config = get_app_config()
+            app_config.reload_config()
+        except Exception as e:
+            # Don't fail the save if cache invalidation fails
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to invalidate app_config cache: {e}")
+
+    async def update(self, updates: dict) -> None:
         """Update specific config fields and save."""
         config = await self.load()
 

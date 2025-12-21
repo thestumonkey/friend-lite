@@ -17,6 +17,7 @@ services:
       - ../data/debug_dir:/app/debug_dir
       - ../data:/app/data
       - ../config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for container management
     environment:
       # Service URLs (Docker internal network)
       - REDIS_URL=redis://redis:6379/${REDIS_DATABASE:-0}

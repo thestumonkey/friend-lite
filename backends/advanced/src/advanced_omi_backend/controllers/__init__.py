@@ -8,6 +8,7 @@ from . import (
     conversation_controller,
     client_controller,
     system_controller,
+    services_controller,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "conversation_controller",
     "client_controller",
     "system_controller",
+    "services_controller",
 ]

@@ -141,12 +141,10 @@ def create_mycelia_config(
     return config
 
 
-def build_memory_config_from_env(allow_missing_keys: bool = False) -> MemoryConfig:
+def build_memory_config_from_env() -> MemoryConfig:
     """Build memory configuration from environment variables and YAML config.
 
-    Args:
-        allow_missing_keys: If True, allow missing API keys and disable features gracefully.
-                           If False, raise errors when required keys are missing.
+    Returns None if required API keys are missing (graceful degradation).
     """
     try:
         # Determine memory provider
@@ -187,7 +185,19 @@ def build_memory_config_from_env(allow_missing_keys: bool = False) -> MemoryConf
             )
 
             # Build LLM config for temporal extraction (Mycelia provider uses OpenAI directly)
-            openai_api_key = os.getenv("OPENAI_API_KEY")
+            # Config-first approach: Load API key from app_config (which reads from secrets.yaml)
+            try:
+                from advanced_omi_backend.app_config import get_app_config
+                app_config = get_app_config()
+                openai_api_key = app_config.openai_api_key
+                if openai_api_key:
+                    memory_logger.info(f"🔑 [Mycelia] Loaded OpenAI API key from config/secrets.yaml")
+                else:
+                    memory_logger.warning(f"⚠️ [Mycelia] OpenAI API key not found in config/secrets.yaml")
+            except Exception as e:
+                memory_logger.error(f"[Mycelia] Failed to load API key from app_config: {e}")
+                openai_api_key = None
+
             if not openai_api_key:
                 memory_logger.warning("OPENAI_API_KEY not set - temporal extraction will be disabled")
                 llm_config = None
@@ -229,14 +239,23 @@ def build_memory_config_from_env(allow_missing_keys: bool = False) -> MemoryConf
 
         # Build LLM configuration
         if llm_provider == "openai":
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if not openai_api_key:
-                if allow_missing_keys:
-                    memory_logger.warning("OPENAI_API_KEY not set - memory extraction will be disabled")
-                    llm_config = None
-                    llm_provider_enum = None
+            # Config-first approach: Load API key from app_config (which reads from secrets.yaml)
+            try:
+                from advanced_omi_backend.app_config import get_app_config
+                app_config = get_app_config()
+                openai_api_key = app_config.openai_api_key
+                if openai_api_key:
+                    memory_logger.info(f"🔑 Loaded OpenAI API key from config/secrets.yaml")
                 else:
-                    raise ValueError("OPENAI_API_KEY required for OpenAI provider")
+                    memory_logger.warning(f"⚠️ OpenAI API key not found in config/secrets.yaml")
+            except Exception as e:
+                memory_logger.error(f"Failed to load API key from app_config: {e}")
+                openai_api_key = None
+
+            if not openai_api_key:
+                memory_logger.warning("OPENAI_API_KEY not set - Chronicle memory service will be disabled")
+                memory_logger.warning("   Add API keys via wizard to enable memory extraction")
+                return None  # Cannot create memory service without LLM
             else:
                 # Use environment variables for model, fall back to config, then defaults
                 model = os.getenv("OPENAI_MODEL") or memory_config.get("llm_settings", {}).get("model") or "gpt-4o-mini"

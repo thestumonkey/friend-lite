@@ -10,10 +10,12 @@ import MemoryDetail from './pages/MemoryDetail'
 import TimelineRouter from './pages/TimelineRouter'
 import Users from './pages/Users'
 import System from './pages/System'
+import Services from './pages/Services'
 import Upload from './pages/Upload'
 import Queue from './pages/Queue'
 import LiveRecord from './pages/LiveRecord'
 import Settings from './pages/Settings'
+import SetupWizard from './pages/SetupWizard'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import { ErrorBoundary, PageErrorBoundary } from './components/ErrorBoundary'
 
@@ -30,6 +32,13 @@ function App() {
           <Router basename={basename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/wizard" element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <SetupWizard />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              } />
               <Route path="/" element={
                 <ProtectedRoute>
                   <Layout />
@@ -78,6 +87,11 @@ function App() {
                 <Route path="system" element={
                   <PageErrorBoundary>
                     <System />
+                  </PageErrorBoundary>
+                } />
+                <Route path="services" element={
+                  <PageErrorBoundary>
+                    <Services />
                   </PageErrorBoundary>
                 } />
                 <Route path="upload" element={

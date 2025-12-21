@@ -93,18 +93,21 @@ def get_memory_service() -> MemoryServiceBase:
             if _memory_service is None:
                 try:
                     # Build configuration from environment
-                    # Check for graceful degradation mode
-                    allow_missing_keys = os.getenv("ALLOW_MISSING_API_KEYS", "false").lower() == "true"
-                    config = build_memory_config_from_env(allow_missing_keys=allow_missing_keys)
+                    config = build_memory_config_from_env()
 
-                    # Create appropriate service implementation
-                    _memory_service = create_memory_service(config)
+                    if config is None:
+                        # Graceful degradation - no API keys configured
+                        _memory_service = None
+                        memory_logger.info("Memory service disabled (no API keys configured)")
+                    else:
+                        # Create appropriate service implementation
+                        _memory_service = create_memory_service(config)
 
-                    # Don't initialize here - let it happen lazily on first use
-                    # This prevents orphaned tasks that cause "Task was destroyed but it is pending" errors
-                    memory_logger.debug(f"Memory service created but not initialized: {type(_memory_service).__name__}")
+                        # Don't initialize here - let it happen lazily on first use
+                        # This prevents orphaned tasks that cause "Task was destroyed but it is pending" errors
+                        memory_logger.debug(f"Memory service created but not initialized: {type(_memory_service).__name__}")
 
-                    memory_logger.info(f"✅ Global memory service created: {type(_memory_service).__name__}")
+                        memory_logger.info(f"✅ Global memory service created: {type(_memory_service).__name__}")
 
                 except Exception as e:
                     memory_logger.error(f"❌ Failed to create memory service: {e}")

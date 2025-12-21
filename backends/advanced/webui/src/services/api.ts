@@ -344,3 +344,45 @@ export const settingsApi = {
   // API keys status
   getApiKeysStatus: () => api.get('/api/settings/api-keys/status'),
 }
+
+export const wizardApi = {
+  // Get wizard completion status
+  getStatus: () => api.get('/api/wizard/status'),
+
+  // API Keys step
+  getApiKeys: () => api.get('/api/wizard/api-keys'),
+  updateApiKeys: (apiKeys: {
+    openai_api_key?: string
+    deepgram_api_key?: string
+    mistral_api_key?: string
+    hf_token?: string
+    langfuse_public_key?: string
+    langfuse_secret_key?: string
+    ngrok_authtoken?: string
+  }) => api.put('/api/wizard/api-keys', apiKeys),
+
+  // Detect and import keys from .env files
+  detectEnvKeys: () => api.get('/api/wizard/detect-env-keys'),
+  importEnvKeys: () => api.post('/api/wizard/import-env-keys'),
+
+  // Mark wizard as complete
+  complete: () => api.post('/api/wizard/complete', { completed: true }),
+}
+
+export const servicesApi = {
+  // Get all Docker services status
+  getServices: (userControllableOnly: boolean = true) =>
+    api.get('/api/admin/services', { params: { user_controllable_only: userControllableOnly } }),
+
+  // Get specific service detail
+  getService: (serviceName: string) => api.get(`/api/admin/services/${serviceName}`),
+
+  // Service control
+  startService: (serviceName: string) => api.post(`/api/admin/services/${serviceName}/start`),
+  stopService: (serviceName: string) => api.post(`/api/admin/services/${serviceName}/stop`),
+  restartService: (serviceName: string) => api.post(`/api/admin/services/${serviceName}/restart`),
+
+  // Get service logs
+  getLogs: (serviceName: string, tail: number = 100) =>
+    api.get(`/api/admin/services/${serviceName}/logs`, { params: { tail } }),
+}

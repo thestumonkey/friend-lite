@@ -1,12 +1,14 @@
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
-import { MessageSquare, MessageCircle, Brain, Users, Upload, Settings, LogOut, Sun, Moon, Shield, Radio, Layers, Calendar, Search, Bell, User, ChevronDown } from 'lucide-react'
+import { MessageSquare, MessageCircle, Brain, Users, Upload, Settings, LogOut, Sun, Moon, Shield, Radio, Layers, Calendar, Search, Bell, User, ChevronDown, Server, Wand2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import HeaderRecordButton from '../header/HeaderRecordButton'
+import { getStorageKey } from '../../utils/storage'
 
 export default function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { user, logout, isAdmin } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -24,6 +26,53 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Auto-redirect to Setup Wizard on first load if API keys are not configured
+  // This provides a seamless onboarding experience for new users
+  useEffect(() => {
+    const checkApiKeysAndRedirect = async () => {
+      // Skip check if user has already completed or dismissed the wizard
+      // The wizard_dismissed flag is set when:
+      // 1. User completes the wizard successfully
+      // 2. User clicks "Skip for now" button
+      const wizardDismissed = localStorage.getItem(getStorageKey('wizard_dismissed'))
+      if (wizardDismissed === 'true') {
+        return
+      }
+
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+        const token = localStorage.getItem(getStorageKey('token'))
+
+        const response = await fetch(`${backendUrl}/api/admin/config/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          console.warn('Failed to check API key status:', response.statusText)
+          return
+        }
+
+        const data = await response.json()
+
+        // Check if critical API keys (OpenAI and Deepgram) are missing
+        const hasOpenAI = data.api_keys?.openai || false
+        const hasDeepgram = data.api_keys?.deepgram || false
+
+        if (!hasOpenAI && !hasDeepgram) {
+          console.log('🧙 No API keys configured, redirecting to setup wizard...')
+          navigate('/wizard', { replace: true })
+        }
+      } catch (error) {
+        console.error('Error checking API key status:', error)
+      }
+    }
+
+    // Only run once when component mounts
+    checkApiKeysAndRedirect()
+  }, [navigate])
+
   const navigationItems = [
     { path: '/live-record', label: 'Live Record', icon: Radio },
     { path: '/chat', label: 'Chat', icon: MessageCircle },
@@ -36,6 +85,7 @@ export default function Layout() {
       { path: '/upload', label: 'Upload Audio', icon: Upload },
       { path: '/queue', label: 'Queue Management', icon: Layers },
       { path: '/system', label: 'System State', icon: Shield },
+      { path: '/services', label: 'Docker Services', icon: Server },
     ] : []),
   ]
 
@@ -230,6 +280,43 @@ export default function Layout() {
                   </Link>
                 )
               })}
+
+              {/* Setup Wizard Button */}
+              <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700 mt-3">
+                <Link
+                  to="/wizard"
+                  className={`
+                    group relative flex items-center px-3 py-2.5 rounded-lg text-sm font-medium
+                    transition-all duration-200 ease-out overflow-hidden
+                    ${location.pathname === '/wizard'
+                      ? 'bg-gradient-to-r from-purple-100 to-purple-50 dark:from-purple-900/30 dark:to-purple-900/10 text-purple-700 dark:text-purple-300 shadow-sm'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-700 dark:hover:text-purple-300'
+                    }
+                  `}
+                >
+                  {location.pathname === '/wizard' && (
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-600 dark:bg-purple-500 rounded-r-full"></div>
+                  )}
+                  <div className={`
+                    flex-shrink-0 transition-all duration-200
+                    ${location.pathname === '/wizard'
+                      ? 'scale-110 text-purple-600 dark:text-purple-400'
+                      : 'group-hover:scale-110 group-hover:text-purple-600 dark:group-hover:text-purple-400'
+                    }
+                  `}>
+                    <Wand2 className="h-5 w-5" />
+                  </div>
+                  <span className={`
+                    ml-3 transition-all duration-200
+                    ${location.pathname === '/wizard' ? 'font-semibold' : ''}
+                  `}>
+                    Setup Wizard
+                  </span>
+                  {location.pathname !== '/wizard' && (
+                    <div className="absolute inset-0 translate-x-full group-hover:-translate-x-full bg-gradient-to-r from-transparent via-purple-100/10 dark:via-purple-100/5 to-transparent transition-transform duration-300 pointer-events-none"></div>
+                  )}
+                </Link>
+              </div>
             </div>
           </nav>
 
