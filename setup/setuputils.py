@@ -10,6 +10,10 @@ import subprocess
 import json
 from typing import Optional, List, Tuple
 
+# Enable debug mode via environment variable
+import os
+DEBUG = os.getenv("SETUP_UTILS_DEBUG", "").lower() in ("1", "true", "yes")
+
 
 def check_port_in_use(port: int) -> bool:
     """
@@ -74,7 +78,13 @@ def check_redis_db_has_data(db_num: int, container_name: str = "redis") -> bool:
 
         return False
 
-    except Exception:
+    except subprocess.TimeoutExpired:
+        if DEBUG:
+            print(f"Warning: Timeout checking Redis database {db_num}", file=sys.stderr)
+        return False
+    except Exception as e:
+        if DEBUG:
+            print(f"Warning: Error checking Redis database {db_num}: {e}", file=sys.stderr)
         return False
 
 
@@ -119,7 +129,13 @@ def get_redis_db_env_marker(db_num: int, container_name: str = "redis") -> Optio
 
         return None
 
-    except Exception:
+    except subprocess.TimeoutExpired:
+        if DEBUG:
+            print(f"Warning: Timeout getting marker from Redis database {db_num}", file=sys.stderr)
+        return None
+    except Exception as e:
+        if DEBUG:
+            print(f"Warning: Error getting marker from Redis database {db_num}: {e}", file=sys.stderr)
         return None
 
 
@@ -159,7 +175,13 @@ def set_redis_db_env_marker(db_num: int, env_name: str, container_name: str = "r
 
         return result.returncode == 0
 
-    except Exception:
+    except subprocess.TimeoutExpired:
+        if DEBUG:
+            print(f"Warning: Timeout setting marker in Redis database {db_num}", file=sys.stderr)
+        return False
+    except Exception as e:
+        if DEBUG:
+            print(f"Warning: Error setting marker in Redis database {db_num}: {e}", file=sys.stderr)
         return False
 
 
@@ -235,6 +257,9 @@ def main():
                 print("Error: Port number required", file=sys.stderr)
                 sys.exit(1)
             port = int(sys.argv[2])
+            if not (1 <= port <= 65535):
+                print(f"Error: Port must be between 1-65535, got {port}", file=sys.stderr)
+                sys.exit(1)
             in_use = check_port_in_use(port)
             print(json.dumps({"in_use": in_use, "port": port}))
             sys.exit(0 if not in_use else 1)
@@ -244,12 +269,18 @@ def main():
                 print("Error: Database number required", file=sys.stderr)
                 sys.exit(1)
             db_num = int(sys.argv[2])
+            if not (0 <= db_num <= 15):
+                print(f"Error: Redis database must be between 0-15, got {db_num}", file=sys.stderr)
+                sys.exit(1)
             has_data = check_redis_db_has_data(db_num)
             print(json.dumps({"has_data": has_data, "db_num": db_num}))
             sys.exit(0 if not has_data else 1)
 
         elif command == "find-redis-db":
             preferred_db = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+            if not (0 <= preferred_db <= 15):
+                print(f"Error: Redis database must be between 0-15, got {preferred_db}", file=sys.stderr)
+                sys.exit(1)
             env_name = sys.argv[3] if len(sys.argv) > 3 else None
             available_db = find_available_redis_db(preferred_db, env_name)
 
@@ -271,6 +302,9 @@ def main():
                 print("Error: Database number and environment name required", file=sys.stderr)
                 sys.exit(1)
             db_num = int(sys.argv[2])
+            if not (0 <= db_num <= 15):
+                print(f"Error: Redis database must be between 0-15, got {db_num}", file=sys.stderr)
+                sys.exit(1)
             env_name = sys.argv[3]
             success = set_redis_db_env_marker(db_num, env_name)
             print(json.dumps({"success": success, "db_num": db_num, "env_name": env_name}))
@@ -281,6 +315,9 @@ def main():
                 print("Error: Database number required", file=sys.stderr)
                 sys.exit(1)
             db_num = int(sys.argv[2])
+            if not (0 <= db_num <= 15):
+                print(f"Error: Redis database must be between 0-15, got {db_num}", file=sys.stderr)
+                sys.exit(1)
             marker = get_redis_db_env_marker(db_num)
             print(json.dumps({"db_num": db_num, "env_marker": marker}))
             sys.exit(0 if marker else 1)
@@ -290,6 +327,11 @@ def main():
                 print("Error: At least one port required", file=sys.stderr)
                 sys.exit(1)
             ports = [int(p) for p in sys.argv[2:]]
+            # Validate all ports are in valid range
+            invalid_ports = [p for p in ports if not (1 <= p <= 65535)]
+            if invalid_ports:
+                print(f"Error: Ports must be between 1-65535, got invalid: {invalid_ports}", file=sys.stderr)
+                sys.exit(1)
             all_available, conflicts = validate_ports(ports)
             print(json.dumps({
                 "available": all_available,

@@ -180,7 +180,11 @@ if [[ ! -f "$ENV_FILE" ]] || [[ "$RESET_CONFIG" == true ]]; then
     done
 
     # Find available Redis database (0-15)
-    # Start with preferred database based on offset
+    # Redis only supports 16 databases, so we use an environment marker system:
+    # 1. Check if this environment already has a marked database (reuse it)
+    # 2. Try preferred database (based on port offset: PORT_OFFSET/10 % 16)
+    # 3. Fall back to any empty database (0-15)
+    # This prevents running out of databases when restarting environments
     PREFERRED_REDIS_DB=$(( (PORT_OFFSET / 10) % 16 ))
 
     if [ "$USE_PYTHON_UTILS" = true ]; then
@@ -342,6 +346,8 @@ else
     USE_DEV_SERVER=true
     COMPOSE_OVERRIDE_FILE="-f compose/overrides/dev-webui.yml"
     echo -e "${GREEN}   Using dev server with hot-reload${NC}"
+    # Add Vite dev server internal port to CORS (5173 is Vite's default)
+    CORS_ORIGINS="${CORS_ORIGINS},http://localhost:5173,http://127.0.0.1:5173"
 fi
 echo ""
 
