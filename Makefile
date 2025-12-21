@@ -59,10 +59,10 @@ menu: ## Show interactive menu (default)
 	@echo "  make logs-all               📋 View all logs"
 	@echo
 	@echo "  OR use docker compose directly:"
-	@echo "  docker compose -f docker-compose.infra.yml up -d  (start infra)"
-	@echo "  docker compose up -d                              (start app)"
-	@echo "  docker compose down                               (stop app only)"
-	@echo "  docker compose -f docker-compose.infra.yml down   (stop infra)"
+	@echo "  docker compose -f docker-compose.infra.yml up -d     (start infra)"
+	@echo "  cd backends/advanced && docker compose up -d         (start app)"
+	@echo "  cd backends/advanced && docker compose down          (stop app only)"
+	@echo "  docker compose -f docker-compose.infra.yml down      (stop infra)"
 	@echo
 	@echo "⚡ Quick Start (First Time):"
 	@echo "  quick-start                 🚀 Interactive setup with zero configuration"
@@ -235,22 +235,22 @@ up: ## 🚀 Start Chronicle (infrastructure + application)
 	else \
 		if ! docker ps --filter "name=^mongo$$" --filter "status=running" -q | grep -q .; then \
 			echo "🏗️  Infrastructure not running, starting it first..."; \
-			docker compose -f compose/infrastructure-shared.yml up -d; \
+			docker compose -f docker-compose.infra.yml up -d; \
 			sleep 3; \
 		fi; \
+		WEBUI_PORT=$$(grep '^WEBUI_PORT=' backends/advanced/.env 2>/dev/null | cut -d= -f2 || echo "3000"); \
+		BACKEND_PORT=$$(grep '^BACKEND_PORT=' backends/advanced/.env 2>/dev/null | cut -d= -f2 || echo "8000"); \
 		cd backends/advanced && docker compose up -d; \
 		echo "✅ Chronicle started"; \
 		echo ""; \
-		WEBUI_PORT=$$(grep '^WEBUI_PORT=' backends/advanced/.env 2>/dev/null | cut -d= -f2 || echo "3000"); \
-		echo "╔════════════════════════════════════════════════════╗"; \
-		echo "║                                                    ║"; \
-		echo "║  🚀 Open Chronicle WebUI:                         ║"; \
-		echo "║                                                    ║"; \
-		echo "║     http://localhost:$$WEBUI_PORT                      ║"; \
-		echo "║                                                    ║"; \
-		echo "║  (Click the link above or copy to browser)        ║"; \
-		echo "║                                                    ║"; \
-		echo "╚════════════════════════════════════════════════════╝"; \
+		printf "╔════════════════════════════════════════════════════╗\n"; \
+		printf "║                                                    ║\n"; \
+		printf "║  🚀 Chronicle Started Successfully                 ║\n"; \
+		printf "║                                                    ║\n"; \
+		printf "║  WebUI:    http://localhost:%-22s║\n" "$$WEBUI_PORT"; \
+		printf "║  Backend:  http://localhost:%-22s║\n" "$$BACKEND_PORT"; \
+		printf "║                                                    ║\n"; \
+		printf "╚════════════════════════════════════════════════════╝\n"; \
 		echo ""; \
 	fi
 
@@ -263,7 +263,7 @@ down: ## 🛑 Stop Chronicle application only (keeps infrastructure running)
 down-all: ## 🛑 Stop everything (infrastructure + application)
 	@echo "🛑 Stopping all services..."
 	@cd backends/advanced && docker compose down
-	@docker compose -f compose/infrastructure-shared.yml down
+	@docker compose -f docker-compose.infra.yml down
 	@echo "✅ All services stopped"
 
 build: ## 🔨 Rebuild Chronicle application images
@@ -278,7 +278,7 @@ restart: ## 🔄 Restart Chronicle application only
 restart-all: ## 🔄 Restart everything (infrastructure + application)
 	@echo "🔄 Restarting all services..."
 	@cd backends/advanced && docker compose restart
-	@docker compose -f compose/infrastructure-shared.yml restart
+	@docker compose -f docker-compose.infra.yml restart
 	@echo "✅ All services restarted"
 
 logs: ## 📋 View Chronicle application logs
@@ -286,7 +286,7 @@ logs: ## 📋 View Chronicle application logs
 
 logs-all: ## 📋 View all logs (infrastructure + application)
 	@cd backends/advanced && docker compose logs -f &
-	@docker compose -f compose/infrastructure-shared.yml logs -f
+	@docker compose -f docker-compose.infra.yml logs -f
 
 quick-start: ## 🚀 Start Chronicle with zero configuration (interactive setup)
 	@./quick-start.sh
@@ -302,7 +302,7 @@ quick-start-stop: ## 🛑 Stop quick-start environment
 quick-start-clean: ## 🗑️  Stop application and remove all data volumes
 	@echo "🗑️  Stopping application and removing data..."
 	@cd backends/advanced && docker compose down -v
-	@docker compose -f compose/infrastructure-shared.yml down -v
+	@docker compose -f docker-compose.infra.yml down -v
 	@echo "✅ Environment cleaned"
 
 quick-start-logs: ## 📋 View quick-start logs
@@ -770,9 +770,9 @@ infra-start: ## Start shared infrastructure (MongoDB, Redis, Qdrant, optional Ne
 	@# Check if Neo4j should be started (NEO4J_ENABLED in any environment)
 	@if grep -q "^NEO4J_ENABLED=true" environments/*.env 2>/dev/null; then \
 		echo "🔗 Neo4j enabled in at least one environment - starting with Neo4j profile..."; \
-		docker compose -p chronicle-infra -f compose/infrastructure-shared.yml --profile neo4j up -d; \
+		docker compose -f docker-compose.infra.yml --profile neo4j up -d; \
 	else \
-		docker compose -p chronicle-infra -f compose/infrastructure-shared.yml up -d; \
+		docker compose -f docker-compose.infra.yml up -d; \
 	fi
 	@echo ""
 	@echo "✅ Infrastructure services started!"
@@ -780,7 +780,7 @@ infra-start: ## Start shared infrastructure (MongoDB, Redis, Qdrant, optional Ne
 	@echo "   📊 MongoDB:  mongodb://localhost:27017"
 	@echo "   💾 Redis:    redis://localhost:6379"
 	@echo "   🔍 Qdrant:   http://localhost:6034"
-	@if docker ps --format '{{.Names}}' | grep -q '^chronicle-neo4j$$'; then \
+	@if docker ps --format '{{.Names}}' | grep -q '^neo4j$$'; then \
 		echo "   🔗 Neo4j:    http://localhost:7474 (bolt: 7687)"; \
 	fi
 	@echo ""
@@ -792,17 +792,17 @@ infra-stop: ## Stop shared infrastructure
 	@echo "🛑 Stopping shared infrastructure..."
 	@echo "⚠️  This will affect ALL running environments!"
 	@read -p "Continue? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
-	@docker compose -p chronicle-infra -f compose/infrastructure-shared.yml down
+	@docker compose -f docker-compose.infra.yml down
 	@echo "✅ Infrastructure stopped"
 
 infra-restart: ## Restart shared infrastructure
 	@echo "🔄 Restarting shared infrastructure..."
-	@docker compose -p chronicle-infra -f compose/infrastructure-shared.yml restart
+	@docker compose -f docker-compose.infra.yml restart
 	@echo "✅ Infrastructure restarted"
 
 infra-logs: ## View infrastructure logs
 	@echo "📋 Viewing infrastructure logs (press Ctrl+C to exit)..."
-	@docker compose -p chronicle-infra -f compose/infrastructure-shared.yml logs -f
+	@docker compose -f docker-compose.infra.yml logs -f
 
 infra-status: ## Check infrastructure status
 	@echo "📊 Infrastructure Status:"
@@ -848,7 +848,7 @@ infra-clean: ## Clean infrastructure data (DANGER: deletes all databases!)
 	@echo "   • All Neo4j graph databases (if enabled)"
 	@echo ""
 	@read -p "Type 'DELETE ALL DATA' to confirm: " confirm && [ "$$confirm" = "DELETE ALL DATA" ] || exit 1
-	@docker compose -p chronicle-infra -f compose/infrastructure-shared.yml --profile neo4j down -v
+	@docker compose -f docker-compose.infra.yml --profile neo4j down -v
 	@echo "✅ Infrastructure data deleted"
 
 # ========================================

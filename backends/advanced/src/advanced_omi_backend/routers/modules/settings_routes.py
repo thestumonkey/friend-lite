@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from advanced_omi_backend.auth import current_active_user, current_superuser
-from advanced_omi_backend.settings_manager import get_settings_manager, SettingsManager
+from advanced_omi_backend.app_config import get_app_config, AppConfig
 from advanced_omi_backend.settings_models import (
     AllSettings,
     ApiKeysSettings,
@@ -31,35 +31,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+async def restart_workers_if_needed():
+    """Restart workers container to pick up new configuration."""
+    try:
+        from advanced_omi_backend.docker_manager import get_docker_manager
+        docker_manager = get_docker_manager()
+        success, message = docker_manager.restart_service("workers", internal=True)
+        if success:
+            logger.info(f"✅ Workers container restarted to load new configuration")
+        else:
+            logger.warning(f"⚠️ Could not restart workers: {message}")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not restart workers container: {e}")
+
+
 # All Settings (Combined)
 
 
 @router.get("", response_model=AllSettings)
 async def get_all_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Get all application settings.
 
     Available to all authenticated users for read access.
     """
-    return await settings_mgr.get_all_settings()
+    return await app_config.get_all_settings()
 
 
 @router.put("", response_model=AllSettings)
 async def update_all_settings(
     settings: AllSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update all application settings at once.
 
     Admin only. Changes take effect within the cache TTL.
     """
-    await settings_mgr.update_all_settings(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_all_settings()
+    await app_config.update_all_settings(settings, updated_by=str(current_user.id))
+    return await app_config.get_all_settings()
 
 
 # Speech Detection Settings
@@ -68,25 +82,25 @@ async def update_all_settings(
 @router.get("/speech-detection", response_model=SpeechDetectionSettings)
 async def get_speech_detection_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get speech detection settings."""
-    return await settings_mgr.get_speech_detection()
+    return await app_config.get_speech_detection()
 
 
 @router.put("/speech-detection", response_model=SpeechDetectionSettings)
 async def update_speech_detection_settings(
     settings: SpeechDetectionSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update speech detection settings. Admin only.
 
     These settings control when audio sessions are converted to conversations.
     """
-    await settings_mgr.update_speech_detection(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_speech_detection()
+    await app_config.update_speech_detection(settings, updated_by=str(current_user.id))
+    return await app_config.get_speech_detection()
 
 
 # Conversation Settings
@@ -95,25 +109,25 @@ async def update_speech_detection_settings(
 @router.get("/conversation", response_model=ConversationSettings)
 async def get_conversation_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get conversation management settings."""
-    return await settings_mgr.get_conversation()
+    return await app_config.get_conversation()
 
 
 @router.put("/conversation", response_model=ConversationSettings)
 async def update_conversation_settings(
     settings: ConversationSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update conversation management settings. Admin only.
 
     Controls conversation timeouts, transcription buffering, and speaker enrollment.
     """
-    await settings_mgr.update_conversation(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_conversation()
+    await app_config.update_conversation(settings, updated_by=str(current_user.id))
+    return await app_config.get_conversation()
 
 
 # Audio Processing Settings
@@ -122,25 +136,25 @@ async def update_conversation_settings(
 @router.get("/audio-processing", response_model=AudioProcessingSettings)
 async def get_audio_processing_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get audio processing settings."""
-    return await settings_mgr.get_audio_processing()
+    return await app_config.get_audio_processing()
 
 
 @router.put("/audio-processing", response_model=AudioProcessingSettings)
 async def update_audio_processing_settings(
     settings: AudioProcessingSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update audio processing settings. Admin only.
 
     Controls audio cropping, silence removal, and segment duration.
     """
-    await settings_mgr.update_audio_processing(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_audio_processing()
+    await app_config.update_audio_processing(settings, updated_by=str(current_user.id))
+    return await app_config.get_audio_processing()
 
 
 # Diarization Settings
@@ -149,25 +163,25 @@ async def update_audio_processing_settings(
 @router.get("/diarization", response_model=DiarizationSettings)
 async def get_diarization_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get speaker diarization settings."""
-    return await settings_mgr.get_diarization()
+    return await app_config.get_diarization()
 
 
 @router.put("/diarization", response_model=DiarizationSettings)
 async def update_diarization_settings(
     settings: DiarizationSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update speaker diarization settings. Admin only.
 
     Controls how speakers are identified and segments are separated.
     """
-    await settings_mgr.update_diarization(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_diarization()
+    await app_config.update_diarization(settings, updated_by=str(current_user.id))
+    return await app_config.get_diarization()
 
 
 # LLM Settings
@@ -176,25 +190,25 @@ async def update_diarization_settings(
 @router.get("/llm", response_model=LLMSettings)
 async def get_llm_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get LLM provider and model settings."""
-    return await settings_mgr.get_llm()
+    return await app_config.get_llm()
 
 
 @router.put("/llm", response_model=LLMSettings)
 async def update_llm_settings(
     settings: LLMSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update LLM settings. Admin only.
 
     Controls which LLM provider and models to use for processing and chat.
     """
-    await settings_mgr.update_llm(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_llm()
+    await app_config.update_llm(settings, updated_by=str(current_user.id))
+    return await app_config.get_llm()
 
 
 # Provider Settings
@@ -203,25 +217,27 @@ async def update_llm_settings(
 @router.get("/providers", response_model=ProviderSettings)
 async def get_provider_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get service provider settings."""
-    return await settings_mgr.get_providers()
+    return await app_config.get_providers()
 
 
 @router.put("/providers", response_model=ProviderSettings)
 async def update_provider_settings(
     settings: ProviderSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update service provider settings. Admin only.
 
     Controls which memory and transcription providers to use.
     """
-    await settings_mgr.update_providers(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_providers()
+    await app_config.update_providers(settings, updated_by=str(current_user.id))
+    # Config cache is automatically invalidated by ConfigParser.save()
+    await restart_workers_if_needed()
+    return await app_config.get_providers()
 
 
 # Network Settings
@@ -230,25 +246,25 @@ async def update_provider_settings(
 @router.get("/network", response_model=NetworkSettings)
 async def get_network_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get network and public access settings."""
-    return await settings_mgr.get_network()
+    return await app_config.get_network()
 
 
 @router.put("/network", response_model=NetworkSettings)
 async def update_network_settings(
     settings: NetworkSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update network settings. Admin only.
 
     Controls public endpoints, CORS, and network access configuration.
     """
-    await settings_mgr.update_network(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_network()
+    await app_config.update_network(settings, updated_by=str(current_user.id))
+    return await app_config.get_network()
 
 
 # Infrastructure Settings
@@ -257,25 +273,25 @@ async def update_network_settings(
 @router.get("/infrastructure", response_model=InfrastructureSettings)
 async def get_infrastructure_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get infrastructure settings."""
-    return await settings_mgr.get_infrastructure()
+    return await app_config.get_infrastructure()
 
 
 @router.put("/infrastructure", response_model=InfrastructureSettings)
 async def update_infrastructure_settings(
     settings: InfrastructureSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update infrastructure settings. Admin only.
 
     Controls MongoDB, Redis, Qdrant, and Neo4j connection settings.
     """
-    await settings_mgr.update_infrastructure(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_infrastructure()
+    await app_config.update_infrastructure(settings, updated_by=str(current_user.id))
+    return await app_config.get_infrastructure()
 
 
 # Miscellaneous Settings
@@ -284,25 +300,25 @@ async def update_infrastructure_settings(
 @router.get("/misc", response_model=MiscSettings)
 async def get_misc_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get miscellaneous settings."""
-    return await settings_mgr.get_misc()
+    return await app_config.get_misc()
 
 
 @router.put("/misc", response_model=MiscSettings)
 async def update_misc_settings(
     settings: MiscSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update miscellaneous settings. Admin only.
 
     Controls debug options and telemetry.
     """
-    await settings_mgr.update_misc(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_misc()
+    await app_config.update_misc(settings, updated_by=str(current_user.id))
+    return await app_config.get_misc()
 
 
 # API Keys Settings
@@ -311,25 +327,26 @@ async def update_misc_settings(
 @router.get("/api-keys", response_model=ApiKeysSettings)
 async def get_api_keys_settings(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """Get API keys settings."""
-    return await settings_mgr.get_api_keys()
+    return await app_config.get_api_keys()
 
 
 @router.put("/api-keys", response_model=ApiKeysSettings)
 async def update_api_keys_settings(
     settings: ApiKeysSettings,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Update API keys settings. Admin only.
 
     Controls external service API keys.
     """
-    await settings_mgr.update_api_keys(settings, updated_by=str(current_user.id))
-    return await settings_mgr.get_api_keys()
+    await app_config.update_api_keys(settings, updated_by=str(current_user.id))
+    await restart_workers_if_needed()
+    return await app_config.get_api_keys()
 
 
 @router.get("/api-keys/load-from-file", response_model=ApiKeysSettings)
@@ -365,7 +382,7 @@ async def save_api_keys(
     save_to_file: bool = True,
     save_to_database: bool = True,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Save API keys to file and/or database. Admin only.
@@ -402,11 +419,15 @@ async def save_api_keys(
     # Save to database
     if save_to_database:
         try:
-            await settings_mgr.update_api_keys(settings, updated_by=str(current_user.id))
+            await app_config.update_api_keys(settings, updated_by=str(current_user.id))
             results["database"] = True
         except Exception as e:
             logger.error(f"Error saving API keys to database: {e}")
             results["errors"].append(f"Database save error: {str(e)}")
+
+    # Restart workers to pick up new API keys
+    if results["database"] or results["file"]:
+        await restart_workers_if_needed()
 
     return {
         "success": results["file"] or results["database"],
@@ -415,7 +436,7 @@ async def save_api_keys(
             "database": results["database"],
         },
         "errors": results["errors"],
-        "settings": await settings_mgr.get_api_keys(),
+        "settings": await app_config.get_api_keys(),
     }
 
 
@@ -426,7 +447,7 @@ async def save_api_keys(
 async def invalidate_settings_cache(
     category: str = None,
     current_user: User = Depends(current_superuser),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Invalidate settings cache. Admin only.
@@ -434,7 +455,7 @@ async def invalidate_settings_cache(
     Forces settings to reload from database on next access.
     If category is provided, only invalidates that category.
     """
-    settings_mgr.invalidate_cache(category)
+    app_config.invalidate_cache(category)
     return {
         "status": "success",
         "message": f"Cache invalidated for {category if category else 'all settings'}",
@@ -447,7 +468,7 @@ async def invalidate_settings_cache(
 @router.get("/infrastructure/status")
 async def get_infrastructure_status(
     current_user: User = Depends(current_active_user),
-    settings_mgr: SettingsManager = Depends(get_settings_manager),
+    app_config: AppConfig = Depends(get_app_config),
 ):
     """
     Get infrastructure service connection status.
@@ -458,7 +479,7 @@ async def get_infrastructure_status(
     from advanced_omi_backend.app_config import get_app_config
 
     # Get infrastructure settings from database
-    infra_settings = await settings_mgr.get_infrastructure()
+    infra_settings = await app_config.get_infrastructure()
     config = get_app_config()
 
     status = {

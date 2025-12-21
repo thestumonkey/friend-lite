@@ -151,8 +151,6 @@ export const systemApi = {
   getHealth: () => api.get('/health'),
   getReadiness: () => api.get('/readiness'),
   getMetrics: () => api.get('/api/metrics'),
-  getProcessorStatus: () => api.get('/api/processor/status'),
-  getProcessorTasks: () => api.get('/api/processor/tasks'),
   getActiveClients: () => api.get('/api/clients/active'),
   getDiarizationSettings: () => api.get('/api/diarization-settings'),
   saveDiarizationSettings: (settings: any) => api.post('/api/diarization-settings', settings),
@@ -349,24 +347,13 @@ export const wizardApi = {
   // Get wizard completion status
   getStatus: () => api.get('/api/wizard/status'),
 
-  // API Keys step
+  // API Keys step (core keys only)
   getApiKeys: () => api.get('/api/wizard/api-keys'),
   updateApiKeys: (apiKeys: {
     openai_api_key?: string
     deepgram_api_key?: string
     mistral_api_key?: string
-    hf_token?: string
-    langfuse_public_key?: string
-    langfuse_secret_key?: string
-    ngrok_authtoken?: string
   }) => api.put('/api/wizard/api-keys', apiKeys),
-
-  // Detect and import keys from .env files
-  detectEnvKeys: () => api.get('/api/wizard/detect-env-keys'),
-  importEnvKeys: () => api.post('/api/wizard/import-env-keys'),
-
-  // Mark wizard as complete
-  complete: () => api.post('/api/wizard/complete', { completed: true }),
 }
 
 export const servicesApi = {

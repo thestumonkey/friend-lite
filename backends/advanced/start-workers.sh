@@ -51,16 +51,10 @@ start_workers() {
     uv run python -m advanced_omi_backend.workers.rq_worker_entry audio &
     AUDIO_PERSISTENCE_WORKER_PID=$!
 
-    # Start stream workers based on available configuration
-    # Only start Deepgram worker if DEEPGRAM_API_KEY is set
-    if [ -n "$DEEPGRAM_API_KEY" ]; then
-        echo "🎵 Starting audio stream Deepgram worker (1 worker for sequential processing)..."
-        uv run python -m advanced_omi_backend.workers.audio_stream_deepgram_worker &
-        AUDIO_STREAM_DEEPGRAM_WORKER_PID=$!
-    else
-        echo "⏭️  Skipping Deepgram stream worker (DEEPGRAM_API_KEY not set)"
-        AUDIO_STREAM_DEEPGRAM_WORKER_PID=""
-    fi
+    # Start stream workers
+    echo "🎵 Starting audio stream Deepgram worker (1 worker for sequential processing)..."
+    uv run python -m advanced_omi_backend.workers.audio_stream_deepgram_worker &
+    AUDIO_STREAM_DEEPGRAM_WORKER_PID=$!
 
 
     # Only start Parakeet worker if PARAKEET_ASR_URL is set

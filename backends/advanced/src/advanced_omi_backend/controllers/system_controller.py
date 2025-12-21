@@ -568,21 +568,40 @@ async def get_api_key_status():
     """Get current API key configuration status."""
     try:
         from advanced_omi_backend.config import get_config_parser
+        from advanced_omi_backend.app_config import get_app_config
 
         config_parser = get_config_parser()
         config = await config_parser.load()
+        app_config = get_app_config()
 
         # Check which API keys are configured
         api_keys = config.api_keys
 
         return {
-            "openai_configured": bool(api_keys.openai_api_key),
-            "deepgram_configured": bool(api_keys.deepgram_api_key),
-            "mistral_configured": bool(api_keys.mistral_api_key),
-            "huggingface_configured": bool(api_keys.hf_token),
-            "langfuse_configured": bool(api_keys.langfuse_public_key and api_keys.langfuse_secret_key),
-            "ngrok_configured": bool(api_keys.ngrok_authtoken),
-            "status": "success"
+            "status": "success",
+            "api_keys": {
+                "openai": bool(api_keys.openai_api_key),
+                "deepgram": bool(api_keys.deepgram_api_key),
+                "mistral": bool(api_keys.mistral_api_key),
+                "huggingface": bool(api_keys.hf_token),
+                "langfuse": bool(api_keys.langfuse_public_key and api_keys.langfuse_secret_key),
+                "ngrok": bool(api_keys.ngrok_authtoken),
+            },
+            "features": {
+                "llm_enabled": app_config.llm_enabled,
+                "transcription_enabled": app_config.transcription_enabled,
+                "memory_extraction": app_config.llm_enabled,  # Memory extraction requires LLM
+            },
+            "graceful_degradation": {
+                "allow_missing_api_keys": app_config.allow_missing_api_keys,
+                "llm_required": app_config.llm_required,
+                "transcription_required": app_config.transcription_required,
+            },
+            "providers": {
+                "llm": app_config.llm_provider,
+                "transcription": app_config.transcription_provider_name or "none",
+                "memory": app_config.memory_provider,
+            }
         }
 
     except Exception as e:

@@ -27,12 +27,13 @@ async def main():
     """Main worker entry point."""
     logger.info("🚀 Starting Deepgram audio stream worker")
 
-    # Get configuration from environment
-    api_key = os.getenv("DEEPGRAM_API_KEY")
+    # Get configuration (config-first)
+    from advanced_omi_backend.app_config import get_app_config
+    app_config = get_app_config()
+    api_key = app_config.deepgram_api_key
+
     if not api_key:
-        logger.warning("DEEPGRAM_API_KEY environment variable not set - Deepgram audio stream worker will not start")
-        logger.warning("Audio transcription will use alternative providers if configured")
-        return
+        logger.warning("⚠️  No Deepgram API key configured - worker will run but transcription will fail until key is added")
 
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 

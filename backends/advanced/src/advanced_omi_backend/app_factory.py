@@ -20,8 +20,7 @@ from advanced_omi_backend.config import (
     get_config_parser,
     init_config_parser,
 )
-from advanced_omi_backend.config.settings_adapter import ConfigBasedSettingsManager
-import advanced_omi_backend.settings_manager as settings_manager_module
+# Settings adapter and manager no longer needed - using AppConfig directly
 from advanced_omi_backend.auth import (
     bearer_backend,
     cookie_backend,
@@ -86,19 +85,8 @@ async def lifespan(app: FastAPI):
         application_logger.error(f"Failed to initialize config parser: {e}")
         raise
 
-    # Initialize settings manager (for backward compatibility with settings_routes)
-    try:
-        config_parser = get_config_parser()
-        settings_mgr = ConfigBasedSettingsManager(config_parser)
-        await settings_mgr.initialize()
-
-        # Register as global settings manager
-        settings_manager_module._settings_manager = settings_mgr
-
-        application_logger.info("✅ Settings manager initialized (using config.yaml)")
-    except Exception as e:
-        application_logger.error(f"Failed to initialize settings manager: {e}")
-        raise
+    # Settings manager no longer needed - all routes use AppConfig directly
+    application_logger.info("✅ Using AppConfig for all settings (YAML-backed)")
 
     # Create admin user if needed
     try:

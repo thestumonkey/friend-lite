@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def get_transcription_provider(
     provider_name: Optional[str] = None,
     mode: Optional[str] = None,
-    allow_missing_keys: bool = False,
+    allow_missing_keys: bool = True,
 ) -> Optional[BaseTranscriptionProvider]:
     """
     Factory function to get the appropriate transcription provider.
@@ -36,7 +36,7 @@ def get_transcription_provider(
         provider_name: Name of the provider ('deepgram', 'parakeet').
                       If None, will auto-select based on available configuration.
         mode: Processing mode ('streaming', 'batch'). If None, defaults to 'batch'.
-        allow_missing_keys: If True, return None instead of raising error when
+        allow_missing_keys: If True (default), return None instead of raising error when
                            provider is requested but API key is not configured.
                            Enables graceful degradation mode.
 
@@ -47,8 +47,13 @@ def get_transcription_provider(
         RuntimeError: If a specific provider is requested but not properly configured
                      (only when allow_missing_keys=False).
     """
-    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-    parakeet_url = os.getenv("PARAKEET_ASR_URL")
+    # Import here to avoid circular dependency
+    from advanced_omi_backend.app_config import get_app_config
+    app_config = get_app_config()
+
+    # Get API keys from app_config (supports config-first with .env fallback)
+    deepgram_key = app_config.deepgram_api_key
+    parakeet_url = os.getenv("PARAKEET_ASR_URL")  # Parakeet URL remains in environment
 
     if provider_name:
         provider_name = provider_name.lower()

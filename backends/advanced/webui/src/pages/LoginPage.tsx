@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { BACKEND_URL } from '../services/api'
+import { BACKEND_URL, wizardApi } from '../services/api'
 import { Brain, Eye, EyeOff } from 'lucide-react'
+import { getStorageKey } from '../utils/storage'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -10,12 +11,46 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [redirectPath, setRedirectPath] = useState<string | null>(null)
 
   const { user, login } = useAuth()
+  const navigate = useNavigate()
 
-  // Redirect if already logged in
-  if (user) {
-    return <Navigate to="/" replace />
+  // Check wizard status when user logs in
+  useEffect(() => {
+    const checkWizardStatus = async () => {
+      if (!user) return
+
+      // Check if wizard was manually dismissed
+      const wizardDismissed = localStorage.getItem(getStorageKey('wizard_dismissed'))
+      if (wizardDismissed === 'true') {
+        setRedirectPath('/')
+        return
+      }
+
+      try {
+        const response = await wizardApi.getStatus()
+        const status = response.data
+
+        // If wizard not completed, redirect to wizard
+        if (!status.wizard_completed) {
+          setRedirectPath('/wizard')
+        } else {
+          setRedirectPath('/')
+        }
+      } catch (error) {
+        console.error('Failed to check wizard status:', error)
+        // Default to home page on error
+        setRedirectPath('/')
+      }
+    }
+
+    checkWizardStatus()
+  }, [user])
+
+  // Redirect after wizard check completes
+  if (user && redirectPath) {
+    return <Navigate to={redirectPath} replace />
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

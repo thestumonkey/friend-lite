@@ -116,3 +116,4 @@ backends/advanced/.env.*
 # Deprecated compose files (moved to root compose/)
 backends/advanced/compose/infrastructure.yml
 backends/advanced/compose/mycelia.yml
+backends/advanced/config/secrets.yaml

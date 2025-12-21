@@ -51,7 +51,13 @@ class OpenAILLMClient(LLMClient):
         temperature: float = 0.1,
     ):
         super().__init__(model, temperature)
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+
+        # Import here to avoid circular dependency
+        from advanced_omi_backend.app_config import get_app_config
+        app_config = get_app_config()
+
+        # Use config-first approach: parameter > app_config > environment
+        self.api_key = api_key or app_config.openai_api_key or os.getenv("OPENAI_API_KEY")
         self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
         self.model = model or os.getenv("OPENAI_MODEL")
         if not self.api_key or not self.base_url or not self.model:
@@ -149,8 +155,9 @@ class LLMClientFactory:
         provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
         if provider in ["openai", "ollama"]:
+            # Pass None to let OpenAILLMClient use app_config as fallback
             return OpenAILLMClient(
-                api_key=os.getenv("OPENAI_API_KEY"),
+                api_key=None,  # Will use app_config.openai_api_key
                 base_url=os.getenv("OPENAI_BASE_URL"),
                 model=os.getenv("OPENAI_MODEL"),
             )
