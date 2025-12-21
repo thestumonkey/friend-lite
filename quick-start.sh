@@ -82,21 +82,140 @@ if [[ ! -f "$ENV_FILE" ]] || [[ "$RESET_CONFIG" == true ]]; then
     # Convert to lowercase and replace spaces/special chars with hyphens
     ENV_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/-$//')
 
+    # Path to setup utilities
+    SETUP_UTILS="setup/setuputils.py"
+
+    # Check if Python utilities are available
+    # Temporarily disable set -e for this check
+    set +e
+    python3 "$SETUP_UTILS" check-port 9999 > /dev/null 2>&1
+    UTILS_CHECK=$?
+    set -e
+
+    if [ $UTILS_CHECK -eq 0 ]; then
+        USE_PYTHON_UTILS=true
+    else
+        USE_PYTHON_UTILS=false
+        echo -e "${YELLOW}⚠️  Python utilities not available, using fallback methods${NC}"
+    fi
+
+    # Function to check if a port is in use
+    check_port() {
+        local port=$1
+        local result
+        if [ "$USE_PYTHON_UTILS" = true ]; then
+            set +e
+            python3 "$SETUP_UTILS" check-port "$port" > /dev/null 2>&1
+            result=$?
+            set -e
+            return $result
+        else
+            # Fallback: use lsof
+            set +e
+            lsof -nP -iTCP:$port -sTCP:LISTEN > /dev/null 2>&1
+            result=$?
+            set -e
+            return $result
+        fi
+    }
+
     # Prompt for port offset (for multi-worktree environments)
     echo ""
     echo -e "${BOLD}Port Configuration${NC}"
     echo -e "${YELLOW}For multi-worktree setups, use different offsets for each environment${NC}"
     echo -e "${YELLOW}Suggested: blue=0, gold=10, green=20, red=30${NC}"
     echo ""
-    read -p "Port offset [0]: " INPUT_PORT_OFFSET
-    PORT_OFFSET="${INPUT_PORT_OFFSET:-0}"
 
-    # Calculate application ports from offset (backend and frontend only)
-    BACKEND_PORT=$((8000 + PORT_OFFSET))
-    WEBUI_PORT=$((3000 + PORT_OFFSET))
+    # Loop until we find available ports and Redis database
+    PORTS_AVAILABLE=false
+    while [ "$PORTS_AVAILABLE" = false ]; do
+        read -p "Port offset [0]: " INPUT_PORT_OFFSET
+        PORT_OFFSET="${INPUT_PORT_OFFSET:-0}"
 
-    # Calculate Redis database number for isolation (shared Redis instance)
-    REDIS_DATABASE=$((PORT_OFFSET / 10))
+        # Calculate application ports from offset (backend and frontend only)
+        BACKEND_PORT=$((8000 + PORT_OFFSET))
+        WEBUI_PORT=$((3000 + PORT_OFFSET))
+
+        # Check if ports are available
+        if [ "$USE_PYTHON_UTILS" = true ]; then
+            # Use Python utility for port validation
+            # Temporarily disable set -e to handle non-zero exit codes
+            set +e
+            PORT_CHECK=$(python3 "$SETUP_UTILS" validate-ports "$BACKEND_PORT" "$WEBUI_PORT" 2>/dev/null)
+            PORT_EXIT_CODE=$?
+            set -e
+
+            if [ $PORT_EXIT_CODE -eq 0 ]; then
+                PORTS_AVAILABLE=true
+            else
+                # Parse conflicts from JSON
+                CONFLICTS=$(echo "$PORT_CHECK" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join([f'Port {p} is already in use' for p in data['conflicts']]))" 2>/dev/null)
+
+                echo ""
+                echo -e "${RED}⚠️  Port conflict detected:${NC}"
+                echo "$CONFLICTS"
+                echo -e "${YELLOW}Please choose a different offset${NC}"
+                echo ""
+            fi
+        else
+            # Fallback: check ports individually
+            CONFLICTS=""
+            if check_port $BACKEND_PORT; then
+                CONFLICTS="${CONFLICTS}Backend port ${BACKEND_PORT} is already in use\n"
+            fi
+            if check_port $WEBUI_PORT; then
+                CONFLICTS="${CONFLICTS}WebUI port ${WEBUI_PORT} is already in use\n"
+            fi
+
+            if [ -n "$CONFLICTS" ]; then
+                echo ""
+                echo -e "${RED}⚠️  Port conflict detected:${NC}"
+                echo -e "$CONFLICTS"
+                echo -e "${YELLOW}Please choose a different offset${NC}"
+                echo ""
+            else
+                PORTS_AVAILABLE=true
+            fi
+        fi
+    done
+
+    # Find available Redis database (0-15)
+    # Start with preferred database based on offset
+    PREFERRED_REDIS_DB=$(( (PORT_OFFSET / 10) % 16 ))
+
+    if [ "$USE_PYTHON_UTILS" = true ]; then
+        # Use Python utility to find available database (with environment awareness)
+        # Temporarily disable set -e to handle non-zero exit codes
+        set +e
+        REDIS_RESULT=$(python3 "$SETUP_UTILS" find-redis-db "$PREFERRED_REDIS_DB" "$ENV_NAME" 2>/dev/null)
+        REDIS_EXIT_CODE=$?
+        set -e
+
+        if [ $REDIS_EXIT_CODE -eq 0 ] && [ -n "$REDIS_RESULT" ]; then
+            REDIS_DATABASE=$(echo "$REDIS_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['db_num'])")
+            MATCHED_ENV=$(echo "$REDIS_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['matched_env'])")
+            CHANGED=$(echo "$REDIS_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['changed'])")
+
+            if [ "$MATCHED_ENV" = "True" ]; then
+                echo -e "${GREEN}✓ Reusing Redis database ${REDIS_DATABASE} for environment '${ENV_NAME}'${NC}"
+            elif [ "$CHANGED" = "True" ]; then
+                echo -e "${YELLOW}Redis database ${PREFERRED_REDIS_DB} already has data${NC}"
+                echo -e "${GREEN}Using available database ${REDIS_DATABASE} for '${ENV_NAME}'${NC}"
+            fi
+
+            # Set environment marker in the selected database
+            set +e
+            python3 "$SETUP_UTILS" set-redis-marker "$REDIS_DATABASE" "$ENV_NAME" > /dev/null 2>&1
+            set -e
+        else
+            # Fallback if parsing fails
+            REDIS_DATABASE=$PREFERRED_REDIS_DB
+        fi
+    else
+        # Fallback: just use preferred database
+        REDIS_DATABASE=$PREFERRED_REDIS_DB
+        echo -e "${YELLOW}Note: Redis database collision detection disabled (Python utilities unavailable)${NC}"
+    fi
 
     # Calculate test environment ports (for parallel testing across worktrees)
     # Tests use shared infrastructure (MongoDB, Redis, Qdrant) but need unique app ports
@@ -207,6 +326,25 @@ else
     echo ""
 fi
 
+# Ask about dev server
+echo ""
+echo -e "${BOLD}Development Server${NC}"
+echo -e "${YELLOW}Use dev server for frontend hot-reload? (Recommended for development)${NC}"
+echo -e "${YELLOW}With dev server: Changes to UI files reload instantly${NC}"
+echo -e "${YELLOW}Without dev server: UI changes require rebuild${NC}"
+echo ""
+read -p "Enable dev server? (Y/n): " use_dev_server
+if [[ "$use_dev_server" == "n" ]] || [[ "$use_dev_server" == "N" ]]; then
+    USE_DEV_SERVER=false
+    COMPOSE_OVERRIDE_FILE="-f compose/overrides/prod.yml"
+    echo -e "${BLUE}   Using production build (no hot-reload)${NC}"
+else
+    USE_DEV_SERVER=true
+    COMPOSE_OVERRIDE_FILE="-f compose/overrides/dev-webui.yml"
+    echo -e "${GREEN}   Using dev server with hot-reload${NC}"
+fi
+echo ""
+
 # Start infrastructure
 echo -e "${BLUE}🏗️  Starting infrastructure...${NC}"
 if docker ps --filter "name=^mongo$" --filter "status=running" -q | grep -q .; then
@@ -221,7 +359,7 @@ echo ""
 # Start application
 echo -e "${BLUE}🚀 Starting Chronicle application...${NC}"
 echo ""
-cd backends/advanced && docker compose up -d --build  # Build and start with .env overrides
+cd backends/advanced && docker compose -f docker-compose.yml $COMPOSE_OVERRIDE_FILE up -d --build  # Build and start with .env overrides
 
 echo ""
 echo "   Waiting for backend to be healthy..."
@@ -255,6 +393,10 @@ echo -e "${BOLD}║  ${GREEN}🚀 Open Chronicle WebUI:${NC}${BOLD}             
 echo -e "${BOLD}║                                                    ║${NC}"
 echo -e "${BOLD}║     ${GREEN}${BOLD}http://localhost:${WEBUI_PORT}${NC}${BOLD}                          ║${NC}"
 echo -e "${BOLD}║                                                    ║${NC}"
+if [[ "$USE_DEV_SERVER" == true ]]; then
+echo -e "${BOLD}║  ${GREEN}(Dev server with hot-reload enabled)${NC}${BOLD}          ║${NC}"
+echo -e "${BOLD}║                                                    ║${NC}"
+fi
 echo -e "${BOLD}║  ${YELLOW}(Click the link above or copy to browser)${NC}${BOLD}     ║${NC}"
 echo -e "${BOLD}║                                                    ║${NC}"
 echo -e "${BOLD}╚════════════════════════════════════════════════════╝${NC}"

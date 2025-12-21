@@ -12,8 +12,9 @@ services:
     env_file:
       - ../../../.env.default  # Committed defaults
       - ../.env                # Generated overrides (if exists)
-    ports:
-      - "${WEBUI_PORT:-3000}:80"
+    # NOTE: Ports defined in override files to prevent conflicts:
+    #   - compose/overrides/prod.yml (production nginx: port 80)
+    #   - compose/overrides/dev-webui.yml (dev server: port 5173)
     depends_on:
       backend:
         condition: service_healthy

@@ -1,0 +1,24 @@
+# Development override for webui with hot-reload
+# Usage: docker compose -f docker-compose.yml -f compose/overrides/dev-webui.yml up
+# NOTE: Paths are relative to working directory (backends/advanced), not this file's location
+
+services:
+  webui:
+    build:
+      context: webui
+      dockerfile: Dockerfile.dev
+      args:
+        - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
+        - VITE_BACKEND_URL=${VITE_BACKEND_URL:-http://localhost:8000}
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./webui/src:/app/src
+      - ./webui/public:/app/public
+      - ./webui/index.html:/app/index.html
+      - ./webui/vite.config.ts:/app/vite.config.ts
+      - ./webui/tsconfig.json:/app/tsconfig.json
+      - ./webui/tsconfig.node.json:/app/tsconfig.node.json
+    ports:
+      - "${WEBUI_PORT:-3000}:5173"  # Vite dev server port
+    environment:
+      - VITE_BACKEND_URL=${VITE_BACKEND_URL:-http://localhost:8000}
