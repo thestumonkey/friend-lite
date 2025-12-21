@@ -141,13 +141,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 async for chunk in response.body_iterator:
                     response_body += chunk
 
-                # Try to parse as JSON for pretty printing
+                # Try to parse as JSON for compact logging
                 try:
                     json_body = json.loads(response_body)
-                    formatted_json = json.dumps(json_body, indent=2)
+                    # Use compact JSON (no indent)
+                    compact_json = json.dumps(json_body, separators=(',', ':'))
+                    # Truncate if too long (max 500 chars)
+                    if len(compact_json) > 500:
+                        compact_json = compact_json[:500] + "..."
                     request_logger.info(
-                        f"← {request.method} {path} - {response.status_code} - {duration_ms:.2f}ms\n"
-                        f"Response body:\n{formatted_json}"
+                        f"← {request.method} {path} - {response.status_code} - {duration_ms:.2f}ms | {compact_json}"
                     )
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     # Not JSON or not UTF-8, just log the status
