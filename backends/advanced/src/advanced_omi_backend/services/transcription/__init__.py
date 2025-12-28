@@ -20,11 +20,11 @@ from .base import BaseTranscriptionProvider, BatchTranscriptionProvider, Streami
 logger = logging.getLogger(__name__)
 
 
-def _dotted_get(d: dict | list | None, dotted: Optional[str]):
-    """Safely extract a value from nested dict/list using dotted paths.
-
-    Supports simple dot separators and list indexes like "results[0].alternatives[0].transcript".
-    Returns None when the path can't be fully resolved.
+def get_transcription_provider(
+    provider_name: Optional[str] = None,
+    mode: Optional[str] = None,
+    allow_missing_keys: bool = False,
+) -> Optional[BaseTranscriptionProvider]:
     """
     if d is None or not dotted:
         return None
@@ -50,77 +50,83 @@ def _dotted_get(d: dict | list | None, dotted: Optional[str]):
             return None
     return cur
 
+    Args:
+        provider_name: Name of the provider ('deepgram', 'parakeet').
+                      If None, will auto-select based on available configuration.
+        mode: Processing mode ('streaming', 'batch'). If None, defaults to 'batch'.
+        allow_missing_keys: If True, return None instead of raising error when
+                           provider is requested but API key is not configured.
+                           Enables graceful degradation mode.
 
 class RegistryBatchTranscriptionProvider(BatchTranscriptionProvider):
     """Batch transcription provider driven by config.yml."""
 
-    def __init__(self):
-        registry = get_models_registry()
-        if not registry:
-            raise RuntimeError("config.yml not found; cannot configure STT provider")
-        model = registry.get_default("stt")
-        if not model:
-            raise RuntimeError("No default STT model defined in config.yml")
-        self.model = model
-        self._name = model.model_provider or model.name
+    Raises:
+        RuntimeError: If a specific provider is requested but not properly configured
+                     (only when allow_missing_keys=False).
+    """
+    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+    parakeet_url = os.getenv("PARAKEET_ASR_URL")
 
-    @property
-    def name(self) -> str:
-        return self._name
+    if provider_name:
+        provider_name = provider_name.lower()
 
-    async def transcribe(self, audio_data: bytes, sample_rate: int, diarize: bool = False) -> dict:
-        op = (self.model.operations or {}).get("stt_transcribe") or {}
-        method = (op.get("method") or "POST").upper()
-        path = (op.get("path") or "/listen")
-        # Build URL
-        base = self.model.model_url.rstrip("/")
-        url = base + ("/" + path.lstrip("/"))
-        
-        # Check if we should use multipart file upload (for Parakeet)
-        content_type = op.get("content_type", "audio/raw")
-        use_multipart = content_type == "multipart/form-data"
-        
-        # Build headers (skip Content-Type for multipart as httpx will set it)
-        headers = {}
-        if not use_multipart:
-            headers["Content-Type"] = "audio/raw"
-            
-        if self.model.api_key:
-            # Allow templated header, otherwise fallback to Bearer/Token conventions by config
-            hdrs = op.get("headers") or {}
-            # Resolve simple ${VAR} placeholders in op headers using env (optional)
-            for k, v in hdrs.items():
-                if isinstance(v, str):
-                    headers[k] = v.replace("${DEEPGRAM_API_KEY:-}", self.model.api_key)
-                else:
-                    headers[k] = v
+    if mode is None:
+        mode = "batch"
+    mode = mode.lower()
+
+    # Handle specific provider requests
+    if provider_name == "deepgram":
+        if not deepgram_key:
+            if allow_missing_keys:
+                logger.debug(
+                    "Deepgram provider requested but DEEPGRAM_API_KEY not configured (graceful degradation mode)"
+                )
+                return None
+            raise RuntimeError(
+                "Deepgram transcription provider requested but DEEPGRAM_API_KEY not configured"
+            )
+        logger.info(f"Using Deepgram transcription provider in {mode} mode")
+        if mode == "streaming":
+            return DeepgramStreamingProvider(deepgram_key)
         else:
-            # When no API key, only add headers that don't require authentication
-            hdrs = op.get("headers") or {}
-            for k, v in hdrs.items():
-                # Skip Authorization headers with empty/invalid values
-                if k.lower() == "authorization" and (not v or v.strip().lower() in ["token", "token ", "bearer", "bearer "]):
-                    continue
-                headers[k] = v
+            return DeepgramProvider(deepgram_key)
 
-        # Query params
-        query = op.get("query") or {}
-        # Inject common params if placeholders used
-        if "sample_rate" in query:
-            query["sample_rate"] = str(sample_rate)
-        if "diarize" in query:
-            query["diarize"] = "true" if diarize else "false"
+    elif provider_name == "parakeet":
+        if not parakeet_url:
+            if allow_missing_keys:
+                logger.debug(
+                    "Parakeet provider requested but PARAKEET_ASR_URL not configured (graceful degradation mode)"
+                )
+                return None
+            raise RuntimeError(
+                "Parakeet ASR provider requested but PARAKEET_ASR_URL not configured"
+            )
+        logger.info(f"Using Parakeet transcription provider in {mode} mode")
+        if mode == "streaming":
+            return ParakeetStreamingProvider(parakeet_url)
+        else:
+            return ParakeetProvider(parakeet_url)
 
-        timeout = op.get("timeout", 120)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            if method == "POST":
-                if use_multipart:
-                    # Send as multipart file upload (for Parakeet)
-                    files = {"file": ("audio.wav", audio_data, "audio/wav")}
-                    resp = await client.post(url, headers=headers, params=query, files=files)
-                else:
-                    # Send as raw audio data (for Deepgram)
-                    resp = await client.post(url, headers=headers, params=query, content=audio_data)
+    # Auto-select provider based on available configuration (when provider_name is None)
+    if provider_name is None:
+        # Check TRANSCRIPTION_PROVIDER environment variable first
+        env_provider = os.getenv("TRANSCRIPTION_PROVIDER")
+        if env_provider:
+            # Recursively call with the specified provider (pass allow_missing_keys through)
+            return get_transcription_provider(env_provider, mode, allow_missing_keys)
+
+        # Auto-select: prefer Deepgram if available, fallback to Parakeet
+        if deepgram_key:
+            logger.info(f"Auto-selected Deepgram transcription provider in {mode} mode")
+            if mode == "streaming":
+                return DeepgramStreamingProvider(deepgram_key)
+            else:
+                return DeepgramProvider(deepgram_key)
+        elif parakeet_url:
+            logger.info(f"Auto-selected Parakeet transcription provider in {mode} mode")
+            if mode == "streaming":
+                return ParakeetStreamingProvider(parakeet_url)
             else:
                 resp = await client.get(url, headers=headers, params=query)
             resp.raise_for_status()

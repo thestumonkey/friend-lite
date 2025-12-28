@@ -112,43 +112,13 @@ def create_mycelia_config(
     return config
 
 
-def create_openai_config(
-    api_key: str,
-    model: str,
-    *,
-    embedding_model: Optional[str] = None,
-    base_url: str = "https://api.openai.com/v1",
-    temperature: float = 0.1,
-    max_tokens: int = 2000,
-) -> Dict[str, Any]:
-    """Create OpenAI/OpenAI-compatible client configuration."""
-    return {
-        "api_key": api_key,
-        "model": model,
-        "embedding_model": embedding_model or model,
-        "base_url": base_url,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+def build_memory_config_from_env(allow_missing_keys: bool = False) -> MemoryConfig:
+    """Build memory configuration from environment variables and YAML config.
 
-
-def create_qdrant_config(
-    host: str = "localhost",
-    port: int = 6333,
-    collection_name: str = "omi_memories",
-    embedding_dims: int = 1536,
-) -> Dict[str, Any]:
-    """Create Qdrant vector store configuration."""
-    return {
-        "host": host,
-        "port": port,
-        "collection_name": collection_name,
-        "embedding_dims": embedding_dims,
-    }
-
-
-def build_memory_config_from_env() -> MemoryConfig:
-    """Build memory configuration from environment variables and YAML config."""
+    Args:
+        allow_missing_keys: If True, allow missing API keys and disable features gracefully.
+                           If False, raise errors when required keys are missing.
+    """
     try:
         # Determine memory provider from registry
         reg = get_models_registry()
@@ -226,59 +196,82 @@ def build_memory_config_from_env() -> MemoryConfig:
 
         # Registry-driven configuration only (no env-based branching)
         llm_config = None
-        llm_provider_enum = LLMProvider.OPENAI  # OpenAI-compatible API family
-        embedding_dims = 1536
-        if not reg:
-            raise ValueError("config.yml not found; cannot configure LLM provider")
-        llm_def = reg.get_default("llm")
-        embed_def = reg.get_default("embedding")
-        if not llm_def:
-            raise ValueError("No default LLM defined in config.yml")
-        model = llm_def.model_name
-        embedding_model = embed_def.model_name if embed_def else "text-embedding-3-small"
-        base_url = llm_def.model_url
-        memory_logger.info(
-            f"🔧 Memory config (registry): LLM={model}, Embedding={embedding_model}, Base URL={base_url}"
-        )
-        llm_config = create_openai_config(
-            api_key=llm_def.api_key or "",
-            model=model,
-            embedding_model=embedding_model,
-            base_url=base_url,
-            temperature=float(llm_def.model_params.get("temperature", 0.1)),
-            max_tokens=int(llm_def.model_params.get("max_tokens", 2000)),
-        )
-        embedding_dims = get_embedding_dims(llm_config)
-        memory_logger.info(f"🔧 Setting Embedder dims {embedding_dims}")
+        llm_provider_enum = None
+        embedding_dims = 1536 # Default
 
-        # Build vector store configuration from registry (no env)
-        vs_def = reg.get_default("vector_store")
-        if not vs_def or (vs_def.model_provider or "").lower() != "qdrant":
-            raise ValueError("No default Qdrant vector_store defined in config.yml")
+        # Build LLM configuration
+        if llm_provider == "openai":
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                if allow_missing_keys:
+                    memory_logger.warning("OPENAI_API_KEY not set - memory extraction will be disabled")
+                    llm_config = None
+                    llm_provider_enum = None
+                else:
+                    raise ValueError("OPENAI_API_KEY required for OpenAI provider")
+            else:
+                # Use environment variables for model, fall back to config, then defaults
+                model = os.getenv("OPENAI_MODEL") or memory_config.get("llm_settings", {}).get("model") or "gpt-4o-mini"
+                embedding_model = memory_config.get("llm_settings", {}).get("embedding_model") or "text-embedding-3-small"
+                base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+                memory_logger.info(f"🔧 Memory config: LLM={model}, Embedding={embedding_model}, Base URL={base_url}")
 
-        host = str(vs_def.model_params.get("host", "qdrant"))
-        port = int(vs_def.model_params.get("port", 6333))
-        collection_name = str(vs_def.model_params.get("collection_name", "omi_memories"))
-        vector_store_config = create_qdrant_config(
-            host=host,
-            port=port,
-            collection_name=collection_name,
-            embedding_dims=embedding_dims,
-        )
-        vector_store_provider_enum = VectorStoreProvider.QDRANT
+                llm_config = create_openai_config(
+                    api_key=openai_api_key,
+                    model=model,
+                    embedding_model=embedding_model,
+                    base_url=base_url,
+                    temperature=memory_config.get("llm_settings", {}).get("temperature", 0.1),
+                    max_tokens=memory_config.get("llm_settings", {}).get("max_tokens", 2000)
+                )
+                llm_provider_enum = LLMProvider.OPENAI
+                embedding_dims = get_embedding_dims(llm_config)
+                memory_logger.info(f"🔧 Setting Embedder dims {embedding_dims}")
+        
+        elif llm_provider == "ollama":
+            base_url = os.getenv("OLLAMA_BASE_URL")
+            if not base_url:
+                raise ValueError("OLLAMA_BASE_URL required for Ollama provider")
+            
+            model = os.getenv("OLLAMA_MODEL")
+            if not model:
+                raise ValueError("OLLAMA_MODEL required for Ollama provider")
+            embedding_model = os.getenv("OLLAMA_EMBEDDER_MODEL")
+            if not embedding_model:
+                raise ValueError("OLLAMA_EMBEDDER_MODEL required for Ollama provider")
+            memory_logger.info(f"🔧 Memory config: LLM={model}, Embedding={embedding_model}, Base URL={base_url}")
 
-        # Get memory extraction settings from registry
-        extraction_cfg = mem_settings.get("extraction") or {}
-        extraction_enabled = bool(extraction_cfg.get("enabled", True))
-        extraction_prompt = extraction_cfg.get("prompt") if extraction_enabled else None
+            llm_config = create_ollama_config(
+                base_url=base_url,
+                model=model,
+                embedding_model=embedding_model,
+            )
+            llm_provider_enum = LLMProvider.OLLAMA
+            embedding_dims = get_embedding_dims(llm_config)
+            memory_logger.info(f"🔧 Setting Embedder dims {embedding_dims}")
 
-        # Timeouts/tunables from registry.memory
-        timeout_seconds = int(mem_settings.get("timeout_seconds", 1200))
-
-        memory_logger.info(
-            f"🔧 Memory config: Provider=Chronicle, LLM={llm_def.model_provider if 'llm_def' in locals() else 'unknown'}, VectorStore={vector_store_provider_enum}, Extraction={extraction_enabled}"
-        )
-
+        # Build vector store configuration
+        vector_store_provider = os.getenv("VECTOR_STORE_PROVIDER", "qdrant").lower()
+        
+        if vector_store_provider == "qdrant":
+            qdrant_host = os.getenv("QDRANT_BASE_URL", "qdrant")
+            vector_store_config = create_qdrant_config(
+                host=qdrant_host,
+                port=int(os.getenv("QDRANT_PORT", "6333")),
+                collection_name="omi_memories",
+                embedding_dims=embedding_dims
+            )
+            vector_store_provider_enum = VectorStoreProvider.QDRANT
+            
+        else:
+            raise ValueError(f"Unsupported vector store provider: {vector_store_provider}")
+        
+        # Get memory extraction settings
+        extraction_enabled = config_loader.is_memory_extraction_enabled()
+        extraction_prompt = config_loader.get_memory_prompt() if extraction_enabled else None
+        
+        memory_logger.info(f"🔧 Memory config: Provider=Chronicle, LLM={llm_provider}, VectorStore={vector_store_provider}, Extraction={extraction_enabled}")
+        
         return MemoryConfig(
             memory_provider=memory_provider_enum,
             llm_provider=llm_provider_enum,

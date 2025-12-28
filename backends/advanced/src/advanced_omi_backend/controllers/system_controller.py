@@ -453,5 +453,37 @@ async def set_memory_provider(provider: str):
         }
 
     except Exception as e:
-        logger.exception("Error setting memory provider")
-        raise e
+        logger.error(f"Error setting memory provider: {e}")
+        return JSONResponse(
+            status_code=500, content={"error": f"Failed to set memory provider: {str(e)}"}
+        )
+
+
+# API Key and Environment Configuration Functions
+
+async def get_api_key_status():
+    """Get current API key configuration status."""
+    try:
+        from advanced_omi_backend.config import get_config_parser
+
+        config_parser = get_config_parser()
+        config = await config_parser.load()
+
+        # Check which API keys are configured
+        api_keys = config.api_keys
+
+        return {
+            "openai_configured": bool(api_keys.openai_api_key),
+            "deepgram_configured": bool(api_keys.deepgram_api_key),
+            "mistral_configured": bool(api_keys.mistral_api_key),
+            "huggingface_configured": bool(api_keys.hf_token),
+            "langfuse_configured": bool(api_keys.langfuse_public_key and api_keys.langfuse_secret_key),
+            "ngrok_configured": bool(api_keys.ngrok_authtoken),
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting API key status: {e}")
+        return JSONResponse(
+            status_code=500, content={"error": f"Failed to get API key status: {str(e)}"}
+        )

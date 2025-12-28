@@ -15,6 +15,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from advanced_omi_backend.app_config import get_app_config
+from advanced_omi_backend.config import (
+    ChronicleConfig,
+    get_config_parser,
+    init_config_parser,
+)
+from advanced_omi_backend.config.settings_adapter import ConfigBasedSettingsManager
+import advanced_omi_backend.settings_manager as settings_manager_module
 from advanced_omi_backend.auth import (
     bearer_backend,
     cookie_backend,
@@ -37,6 +44,7 @@ from advanced_omi_backend.routers.modules.health_routes import router as health_
 from advanced_omi_backend.routers.modules.websocket_routes import router as websocket_router
 from advanced_omi_backend.services.audio_service import get_audio_stream_service
 from advanced_omi_backend.task_manager import init_task_manager, get_task_manager
+from advanced_omi_backend.services.mcp_server import setup_mcp_server
 
 logger = logging.getLogger(__name__)
 application_logger = logging.getLogger("audio_processing")
@@ -64,6 +72,32 @@ async def lifespan(app: FastAPI):
         application_logger.info("Beanie initialized for all document models")
     except Exception as e:
         application_logger.error(f"Failed to initialize Beanie: {e}")
+        raise
+
+    # Initialize config parser (new config.yaml system)
+    try:
+        config_parser = init_config_parser("config/config.yaml")
+
+        # Load config (auto-copies from config/config.defaults.yaml if needed)
+        chronicle_config = await config_parser.load()
+        application_logger.info(f"✅ Configuration loaded (wizard_completed={chronicle_config.wizard_completed})")
+
+    except Exception as e:
+        application_logger.error(f"Failed to initialize config parser: {e}")
+        raise
+
+    # Initialize settings manager (for backward compatibility with settings_routes)
+    try:
+        config_parser = get_config_parser()
+        settings_mgr = ConfigBasedSettingsManager(config_parser)
+        await settings_mgr.initialize()
+
+        # Register as global settings manager
+        settings_manager_module._settings_manager = settings_mgr
+
+        application_logger.info("✅ Settings manager initialized (using config.yaml)")
+    except Exception as e:
+        application_logger.error(f"Failed to initialize settings manager: {e}")
         raise
 
     # Create admin user if needed
@@ -204,6 +238,10 @@ def create_app() -> FastAPI:
         prefix="/users",
         tags=["users"],
     )
+
+    # Setup MCP server for conversation access
+    setup_mcp_server(app)
+    logger.info("MCP server configured for conversation access")
 
     # Mount static files LAST (mounts are catch-all patterns)
     CHUNK_DIR = Path("/app/audio_chunks")

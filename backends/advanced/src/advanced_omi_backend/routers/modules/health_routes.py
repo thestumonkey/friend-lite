@@ -1,5 +1,5 @@
 """
-Health check routes for Chronicle backend.
+Health check routes for Friend-Lite backend.
 
 This module provides health check endpoints for monitoring the application's status.
 """
@@ -36,8 +36,9 @@ mongo_client = AsyncIOMotorClient(MONGODB_URI)
 # Memory service
 memory_service = get_memory_service()
 
-# Transcription provider
-transcription_provider = get_transcription_provider()
+# Transcription provider (with graceful degradation support)
+allow_missing_keys = os.getenv("ALLOW_MISSING_API_KEYS", "false").lower() == "true"
+transcription_provider = get_transcription_provider(allow_missing_keys=allow_missing_keys)
 
 # Registry-driven configuration for display
 REGISTRY = get_models_registry()
@@ -144,12 +145,9 @@ async def health_check():
 
     overall_healthy = True
     critical_services_healthy = True
-
+    
     # Get configuration once at the start
-    # Memory provider (registry-based)
-    mem_settings = REGISTRY.memory if REGISTRY else {}
-    memory_provider = (mem_settings.get("provider") or "chronicle").lower()
-
+    memory_provider = os.getenv("MEMORY_PROVIDER", "friend_lite")
     speaker_service_url = os.getenv("SPEAKER_SERVICE_URL")
     openmemory_mcp_url = os.getenv("OPENMEMORY_MCP_URL")
 
@@ -160,12 +158,14 @@ async def health_check():
             "status": "✅ Connected",
             "healthy": True,
             "critical": True,
+            "url": MONGODB_URI,
         }
     except asyncio.TimeoutError:
         health_status["services"]["mongodb"] = {
             "status": "❌ Connection Timeout (5s)",
             "healthy": False,
             "critical": True,
+            "url": MONGODB_URI,
         }
         overall_healthy = False
         critical_services_healthy = False
@@ -174,13 +174,14 @@ async def health_check():
             "status": f"❌ Connection Failed: {str(e)}",
             "healthy": False,
             "critical": True,
+            "url": MONGODB_URI,
         }
         overall_healthy = False
         critical_services_healthy = False
 
     # Check Redis and RQ Workers (critical for queue processing)
     try:
-        from advanced_omi_backend.controllers.queue_controller import get_queue_health
+        from advanced_omi_backend.controllers.queue_controller import get_queue_health, REDIS_URL
 
         # Get queue health (includes Redis connection test and worker count)
         queue_health = await asyncio.wait_for(
@@ -198,6 +199,7 @@ async def health_check():
                 "status": "✅ Connected",
                 "healthy": True,
                 "critical": True,
+                "url": REDIS_URL,
                 "worker_count": worker_count,
                 "active_workers": active_workers,
                 "idle_workers": idle_workers,
@@ -208,6 +210,7 @@ async def health_check():
                 "status": f"❌ Connection Failed: {queue_health.get('redis_connection')}",
                 "healthy": False,
                 "critical": True,
+                "url": REDIS_URL,
                 "worker_count": 0
             }
             overall_healthy = False
@@ -218,6 +221,7 @@ async def health_check():
             "status": "❌ Connection Timeout (5s)",
             "healthy": False,
             "critical": True,
+            "url": os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             "worker_count": 0
         }
         overall_healthy = False
@@ -227,6 +231,7 @@ async def health_check():
             "status": f"❌ Connection Failed: {str(e)}",
             "healthy": False,
             "critical": True,
+            "url": os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             "worker_count": 0
         }
         overall_healthy = False
@@ -238,61 +243,70 @@ async def health_check():
         health_status["services"]["audioai"] = {
             "status": llm_health.get("status", "❌ Unknown"),
             "healthy": "✅" in llm_health.get("status", ""),
-            "base_url": llm_health.get("base_url", ""),
+            "url": llm_health.get("base_url", ""),
             "model": llm_health.get("default_model", ""),
             "provider": (_llm_def.model_provider if _llm_def else "unknown"),
             "critical": False,
         }
     except asyncio.TimeoutError:
+        llm_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         health_status["services"]["audioai"] = {
             "status": "⚠️ Connection Timeout (8s) - Service may not be running",
             "healthy": False,
-            "provider": (_llm_def.model_provider if _llm_def else "unknown"),
+            "url": llm_base_url,
+            "provider": os.getenv("LLM_PROVIDER", "openai"),
             "critical": False,
         }
         overall_healthy = False
     except Exception as e:
+        llm_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         health_status["services"]["audioai"] = {
             "status": f"⚠️ Connection Failed: {str(e)} - Service may not be running",
             "healthy": False,
-            "provider": (_llm_def.model_provider if _llm_def else "unknown"),
+            "url": llm_base_url,
+            "provider": os.getenv("LLM_PROVIDER", "openai"),
             "critical": False,
         }
         overall_healthy = False
 
     # Check memory service (provider-dependent)
-    if memory_provider == "chronicle":
+    if memory_provider == "friend_lite":
+        qdrant_url = f"http://{QDRANT_BASE_URL}:{QDRANT_PORT}"
         try:
-            # Test Chronicle memory service connection with timeout
+            # Test Friend-Lite memory service connection with timeout
             test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=8.0)
             if test_success:
                 health_status["services"]["memory_service"] = {
-                    "status": "✅ Chronicle Memory Connected",
+                    "status": "✅ Friend-Lite Memory Connected",
                     "healthy": True,
-                    "provider": "chronicle",
+                    "provider": "friend_lite",
+                    "url": qdrant_url,
                     "critical": False,
                 }
             else:
                 health_status["services"]["memory_service"] = {
-                    "status": "⚠️ Chronicle Memory Test Failed",
+                    "status": "⚠️ Friend-Lite Memory Test Failed",
                     "healthy": False,
-                    "provider": "chronicle",
+                    "provider": "friend_lite",
+                    "url": qdrant_url,
                     "critical": False,
                 }
                 overall_healthy = False
         except asyncio.TimeoutError:
             health_status["services"]["memory_service"] = {
-                "status": "⚠️ Chronicle Memory Timeout (8s) - Check Qdrant",
+                "status": "⚠️ Friend-Lite Memory Timeout (8s) - Check Qdrant",
                 "healthy": False,
-                "provider": "chronicle",
+                "provider": "friend_lite",
+                "url": qdrant_url,
                 "critical": False,
             }
             overall_healthy = False
         except Exception as e:
             health_status["services"]["memory_service"] = {
-                "status": f"⚠️ Chronicle Memory Failed: {str(e)}",
+                "status": f"⚠️ Friend-Lite Memory Failed: {str(e)}",
                 "healthy": False,
-                "provider": "chronicle",
+                "provider": "friend_lite",
+                "url": qdrant_url,
                 "critical": False,
             }
             overall_healthy = False
@@ -302,10 +316,12 @@ async def health_check():
             "status": "✅ Using OpenMemory MCP",
             "healthy": True,
             "provider": "openmemory_mcp",
+            "url": openmemory_mcp_url or "Not configured",
             "critical": False,
         }
     elif memory_provider == "mycelia":
         # Mycelia memory service check
+        mycelia_url = os.getenv("MYCELIA_API_URL", "http://mycelia-backend:5100")
         try:
             # Test Mycelia memory service connection with timeout
             test_success = await asyncio.wait_for(memory_service.test_connection(), timeout=8.0)
@@ -314,6 +330,7 @@ async def health_check():
                     "status": "✅ Mycelia Memory Connected",
                     "healthy": True,
                     "provider": "mycelia",
+                    "url": mycelia_url,
                     "critical": False,
                 }
             else:
@@ -321,6 +338,7 @@ async def health_check():
                     "status": "⚠️ Mycelia Memory Test Failed",
                     "healthy": False,
                     "provider": "mycelia",
+                    "url": mycelia_url,
                     "critical": False,
                 }
                 overall_healthy = False
@@ -329,6 +347,7 @@ async def health_check():
                 "status": "⚠️ Mycelia Memory Timeout (8s) - Check Mycelia service",
                 "healthy": False,
                 "provider": "mycelia",
+                "url": mycelia_url,
                 "critical": False,
             }
             overall_healthy = False
@@ -337,6 +356,7 @@ async def health_check():
                 "status": f"⚠️ Mycelia Memory Failed: {str(e)}",
                 "healthy": False,
                 "provider": "mycelia",
+                "url": mycelia_url,
                 "critical": False,
             }
             overall_healthy = False
